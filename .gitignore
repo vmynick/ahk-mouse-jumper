@@ -1,0 +1,9 @@
+# Generated at runtime, holds this machine's personal settings
+settings.ini
+
+# External binary dependency, download separately (see README)
+hidapitester.exe
+
+# Legacy / backup files
+mouse_jumper_old.ahk
+*.bak
