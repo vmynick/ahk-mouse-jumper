@@ -62,6 +62,7 @@ first-run wizard.
 |---|---|---|
 | [`mouse_jumper.ahk`](mouse_jumper.ahk) | v1.1 | Main script |
 | [`mouse_jumper_v2.ahk`](mouse_jumper_v2.ahk) | v2.0 | Same behavior, ported to AHK v2 syntax, for machines running AutoHotkey v2 |
+| [`find_channel_codes.ps1`](find_channel_codes.ps1) | — | PowerShell helper to discover the HID++ codes for *your* mouse/receiver |
 
 Both scripts are functionally equivalent — use whichever matches the AutoHotkey runtime
 installed on a given machine.
@@ -71,9 +72,45 @@ installed on a given machine.
 - [AutoHotkey](https://www.autohotkey.com/) v1.1.36+ or v2.0+ (matching the script you run).
 - [`hidapitester.exe`](https://github.com/todbot/hidapitester/releases) placed next to the
   script (not included in this repo — download the Windows build from its releases page).
-- A Logitech (or HID++-compatible) receiver that supports multiple paired devices/channels.
+- A Logitech (or HID++-compatible) mouse + receiver that supports multiple paired
+  hosts/channels (e.g. Logitech's "Easy-Switch"). Tested on a **Logitech MX Master 3**;
+  other models will likely need different HID++ codes — see
+  [Adapting to a different mouse or receiver](#adapting-to-a-different-mouse-or-receiver).
   The default `ReceiverVidPid` in the scripts is `046D:C52B`; change it in the script if
   your receiver reports a different VID:PID (check with `hidapitester --list`).
+
+## Adapting to a different mouse or receiver
+
+This project was built and tested against a **Logitech MX Master 3** paired to a
+Logitech receiver at VID:PID `046D:C52B`. The channel-switch command it sends is a
+vendor-specific HID++ 2.0 request:
+
+```
+0x10, <deviceIndex>, <featureIndex>, 0x1<swID>, <channel>, 0x00, 0x00
+```
+
+`deviceIndex` (which paired device slot the receiver assigned to your mouse) and
+`featureIndex` (where the "Change Host" feature landed in that device's HID++ feature
+table) are **not fixed values** — they depend on your specific mouse/receiver pairing
+and firmware, and will very likely be different on your hardware. That's why the byte
+sequences hardcoded in `SwitchChannel()` in this repo's scripts may not work as-is on
+a different mouse, even one that supports the same multi-host "Easy-Switch" channels.
+
+To find *your* values instead of sniffing USB traffic by hand, run the included helper:
+
+```powershell
+.\find_channel_codes.ps1
+```
+
+It will:
+1. List the Logitech HID collections it can see (to confirm VID:PID/usagePage/usage).
+2. Probe device indices 1–6 for the "Change Host" HID++ feature and report which
+   `deviceIndex` / `featureIndex` combination supports it.
+3. Let you fire a real channel-switch command against a candidate so you can visually
+   confirm the mouse actually jumps, before you copy the resulting byte string into
+   `SwitchChannel()` in your `.ahk` script.
+
+It needs `hidapitester.exe` next to it, same as the main scripts.
 
 ## Setup
 

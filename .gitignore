@@ -7,3 +7,4 @@ hidapitester.exe
 # Legacy / backup files
 mouse_jumper_old.ahk
 *.bak
+.gitignore
