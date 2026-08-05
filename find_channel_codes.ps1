@@ -14,25 +14,31 @@
   hardware -- and some receivers don't even expose the same feature.
 
   This script needs no manual input and doesn't assume anything about which
-  exact mouse/receiver you have:
+  exact mouse/receiver you have, or which HID report conventions it uses:
     1. Lists the matching HID collections as a table (VID:PID, usagePage,
        usage, interface).
-    2. Auto-detects which usage on that usagePage is the live HID++ channel
-       (a single usagePage often has several collections, e.g. short vs.
-       long HID++ reports, and only one answers).
-    3. Scans every device index for the HID++ features known to relate to
-       host switching (CHANGE_HOST, HOSTS_INFO, and a couple of related
-       pairing features). If none of those are found anywhere, it dumps the
-       full feature table of every responding device index for you to
-       inspect -- but it will NOT blindly fire commands at unrecognized
-       features, since some HID++ features (device reset, DFU mode, ...)
-       are destructive and guessing at those is not safe to automate.
-    4. For every found candidate, autonomously tries the plausible function
-       numbers and channels, sending a real "switch host" command each
-       time. Success is detected by the device going silent on this
-       receiver right after a command -- i.e. it actually jumped to another
-       host -- with no need to eyeball the mouse. The moment that happens,
-       it stops and prints the exact bytes to use in SwitchChannel().
+    2. Scans every device index, and for each one auto-detects which
+       (usage, report-length) combination gets real replies out of it, then
+       checks it for the HID++ features known to relate to host switching
+       (CHANGE_HOST, HOSTS_INFO, and a couple of related pairing features).
+       This isn't detected once globally, because a single usagePage often
+       has several collections (e.g. one for 7-byte "short" HID++ reports,
+       one for 20-byte "long" reports) and, as it turns out, even different
+       device indices *on the very same receiver* can need different ones --
+       the receiver's own pseudo-index (0xFF) may only answer short reports
+       while an actual paired device only answers long ones, or vice versa.
+       If none of the known features are found anywhere, it dumps the full
+       feature table of every responding device index for you to inspect --
+       but it will NOT blindly fire commands at unrecognized features, since
+       some HID++ features (device reset, DFU mode, ...) are destructive and
+       guessing at those is not safe to automate.
+    3. For every found candidate, autonomously tries the plausible function
+       numbers, channels, and report lengths, sending a real "switch host"
+       command each time. Success is detected by the device going silent on
+       this receiver right after a command -- i.e. it actually jumped to
+       another host -- with no need to eyeball the mouse. The moment that
+       happens, it stops and prints the exact bytes to use in
+       SwitchChannel().
 
   NOTE: because this really fires host-switch commands, if it succeeds your
   mouse WILL jump off this PC during the test. That's expected -- it's
@@ -51,12 +57,6 @@
   HID usage page filter. Logitech's HID++ vendor collection is usually
   0xFF00 -- change this if Step 1's listing shows something else.
 
-.PARAMETER Usage
-  HID usage filter. Left empty by default, the script auto-detects it by
-  trying the common candidates (0x0001 "short" reports, 0x0002 "long",
-  0x0004) against your receiver and locking onto whichever one actually
-  answers. Pass this explicitly to skip auto-detection.
-
 .PARAMETER MaxDeviceIndex
   Highest HID++ device index to probe (paired-device slot count). 6 covers
   Unifying/Bolt receivers; raise it if your receiver supports more.
@@ -65,14 +65,13 @@
   .\find_channel_codes.ps1
 
 .EXAMPLE
-  .\find_channel_codes.ps1 -VidPid 046D:C548 -UsagePage 0xFF00 -Usage 0x0001
+  .\find_channel_codes.ps1 -VidPid 046D:C548 -UsagePage 0xFF00
 #>
 
 param(
     [string]$HidApiTester = (Join-Path $PSScriptRoot "hidapitester.exe"),
     [string]$VidPid = "046D",
     [string]$UsagePage = "0xFF00",
-    [string]$Usage = "",
     [int]$MaxDeviceIndex = 6,
     [int]$TimeoutMs = 400
 )
@@ -84,7 +83,14 @@ param(
 # also the *safe list* -- the only features this script will ever send
 # unsolicited commands to, since unrelated HID++ features can be destructive
 # (device reset, DFU mode, ...) and guessing at those is not safe to automate.
-$HostSwitchCandidateIds = [ordered]@{
+# Plain @{} on purpose, not [ordered]@{}: OrderedDictionary's indexer treats
+# an Int32 key as a *positional* lookup (it implements IOrderedDictionary),
+# so with integer feature IDs as keys, $dict[0x1814] would silently try to
+# return "the item at index 6164" instead of looking up the key -- returning
+# nothing instead of the name, with no error. Plain Hashtable has no such
+# ambiguity. Iteration order isn't relied on here; priority ordering happens
+# explicitly via Sort-Object where it matters (Step 3).
+$HostSwitchCandidateIds = @{
     0x1814 = "CHANGE_HOST"
     0x1815 = "HOSTS_INFO"
     0x1816 = "BLE_PRO_PRE_PAIRING"
@@ -94,7 +100,7 @@ $HostSwitchCandidateIds = [ordered]@{
 # A few other common feature IDs, purely so the diagnostic full-table dump
 # (when nothing on the safe list is found) is readable instead of a wall of
 # bare hex. Not exhaustive -- unrecognized IDs just print as "(unknown)".
-$KnownFeatureNames = [ordered]@{
+$KnownFeatureNames = @{
     0x0000 = "ROOT"
     0x0001 = "FEATURE_SET"
     0x0002 = "FEATURE_INFO"
@@ -132,22 +138,36 @@ if (-not (Test-Path $HidApiTester)) {
     exit 1
 }
 
+# Fallback (usage, report length) used only if a caller doesn't specify one
+# explicitly. Step 2 finds the real working combo per device index instead
+# of relying on a single global value -- see $comboCandidates below.
+$script:QueryUsage = ""
+$script:QueryLength = 7
+
 function Invoke-HidApiTester {
     param([string[]]$ArgList)
     & $HidApiTester @ArgList 2>&1 | Out-String
 }
 
-function Get-OpenFilterArgs {
+function Get-FilterArgs {
+    param([string]$UsageValue)
     $filterArgs = @("--vidpid", $VidPid, "--usagePage", $UsagePage)
-    if ($Usage -ne "") { $filterArgs += @("--usage", $Usage) }
+    if ($UsageValue -ne "") { $filterArgs += @("--usage", $UsageValue) }
     return $filterArgs
 }
 
+# Extracts the hex byte dump that follows hidapitester's "read N bytes:"
+# line. Anchoring on a regex match (not a plain string search past "read ")
+# matters: the byte count N itself is printed right there ("read 20 bytes:"),
+# and for 20-byte reports "20" is itself a valid-looking 2-hex-digit token --
+# a plain search would swallow it as a fake leading byte and misalign every
+# byte after it. Matching the whole "read \d+ bytes:" phrase and starting
+# just past it sidesteps that regardless of how many digits the count has.
 function Get-HexBytesAfterMarker {
-    param([string]$Text, [string]$Marker, [int]$Count)
-    $idx = $Text.IndexOf($Marker)
-    if ($idx -lt 0) { return $null }
-    $tail = $Text.Substring($idx + $Marker.Length)
+    param([string]$Text, [int]$Count)
+    $readMatch = [regex]::Match($Text, 'read \d+ bytes:')
+    if (-not $readMatch.Success) { return $null }
+    $tail = $Text.Substring($readMatch.Index + $readMatch.Length)
     $hexMatches = [regex]::Matches($tail, '\b[0-9A-Fa-f]{2}\b')
     if ($hexMatches.Count -lt $Count) { return $null }
     $bytes = New-Object 'System.Collections.Generic.List[byte]'
@@ -157,54 +177,85 @@ function Get-HexBytesAfterMarker {
     return $bytes
 }
 
-# Sends a HID++ 2.0 short report and reads the 7-byte reply, or $null on timeout.
+# Sends one HID++ 2.0 report and reads the reply, or $null on timeout.
+# ReportLength 7 = "short" report (reportId 0x10, 3 param bytes);
+# ReportLength 20 = "long" report (reportId 0x11, 16 param bytes). Which one
+# a given device actually replies to for *queries* varies by hardware, and
+# even by device index on the same receiver -- see $comboCandidates below.
 function Send-HidPPRequest {
-    param([int]$DevIdx, [int]$FeatureIndex, [int]$FunctionByte, [int]$P1 = 0, [int]$P2 = 0, [int]$P3 = 0)
-    $request = "0x10,0x{0:X2},0x{1:X2},0x{2:X2},0x{3:X2},0x{4:X2},0x{5:X2}" -f $DevIdx, $FeatureIndex, $FunctionByte, $P1, $P2, $P3
-    $probeArgs = (Get-OpenFilterArgs) + @(
-        "--open", "--length", "7",
+    param(
+        [int]$DevIdx, [int]$FeatureIndex, [int]$FunctionByte,
+        [int]$P1 = 0, [int]$P2 = 0, [int]$P3 = 0,
+        [int]$ReportLength = $script:QueryLength,
+        [string]$UsageValue = $script:QueryUsage
+    )
+    if ($ReportLength -eq 20) {
+        $reportIdByte = "0x11"
+        $paramCount = 16
+    } else {
+        $reportIdByte = "0x10"
+        $paramCount = 3
+    }
+    $params = @($P1, $P2, $P3)
+    while ($params.Count -lt $paramCount) { $params += 0 }
+    $paramHex = ($params | ForEach-Object { "0x{0:X2}" -f $_ }) -join ","
+    $request = "{0},0x{1:X2},0x{2:X2},0x{3:X2},{4}" -f $reportIdByte, $DevIdx, $FeatureIndex, $FunctionByte, $paramHex
+
+    $probeArgs = (Get-FilterArgs -UsageValue $UsageValue) + @(
+        "--open", "--length", $ReportLength,
         "--send-output", $request,
         "--timeout", $TimeoutMs,
         "--read-input",
         "--close"
     )
     $output = Invoke-HidApiTester -ArgList $probeArgs
-    return Get-HexBytesAfterMarker -Text $output -Marker "read " -Count 7
+    return Get-HexBytesAfterMarker -Text $output -Count $ReportLength
 }
 
-# True if a device index answers at all right now (root-feature ping for
-# FEATURE_SET, 0x0001) -- a correctly addressed reply, even "not found",
-# proves the collection/device is alive; an unrelated collection just times out.
+# True if a reply's header is a correctly addressed HID++ 2.0 response to our
+# request -- either success (byte2 echoes the featureIndex we asked, e.g.
+# 0x00 for a root request) or an explicit protocol error (byte2 = 0x8F).
+# Either proves the (usage, length) combo and device index are genuinely
+# talking HID++; only a raw timeout (which hidapitester still pads out to a
+# zeroed buffer) means nothing is there.
+function Test-ValidHidPPReply {
+    param([array]$Response, [int]$DevIdx, [int]$ReportLength, [int]$RequestFeatureIndex)
+    if ($null -eq $Response) { return $false }
+    $expectedReportId = 0x10
+    if ($ReportLength -eq 20) { $expectedReportId = 0x11 }
+    return ($Response[0] -eq $expectedReportId) -and ($Response[1] -eq $DevIdx) -and (($Response[2] -eq $RequestFeatureIndex) -or ($Response[2] -eq 0x8F))
+}
+
+# True if a device index answers at all right now, via a given (usage,
+# report length) combo -- root-feature ping (FEATURE_SET = 0x0001).
 function Test-DeviceAlive {
-    param([int]$DevIdx)
-    $response = Send-HidPPRequest -DevIdx $DevIdx -FeatureIndex 0x00 -FunctionByte 0x01 -P1 0x00 -P2 0x01
-    return ($null -ne $response) -and ($response[0] -eq 0x10) -and ($response[1] -eq $DevIdx) -and ($response[2] -eq 0x00)
+    param([int]$DevIdx, [int]$ReportLength = $script:QueryLength, [string]$UsageValue = $script:QueryUsage)
+    $response = Send-HidPPRequest -DevIdx $DevIdx -FeatureIndex 0x00 -FunctionByte 0x01 -P1 0x00 -P2 0x01 -ReportLength $ReportLength -UsageValue $UsageValue
+    return Test-ValidHidPPReply -Response $response -DevIdx $DevIdx -ReportLength $ReportLength -RequestFeatureIndex 0x00
 }
 
 # root.getFeature(featureId) -> the feature's index on this device, or $null.
 function Get-FeatureIndexFor {
-    param([int]$DevIdx, [int]$FeatureId)
-    $response = Send-HidPPRequest -DevIdx $DevIdx -FeatureIndex 0x00 -FunctionByte 0x01 -P1 (($FeatureId -shr 8) -band 0xFF) -P2 ($FeatureId -band 0xFF)
-    if ($null -eq $response) { return $null }
-    if ($response[0] -eq 0x10 -and $response[1] -eq $DevIdx -and $response[2] -eq 0x00 -and $response[4] -ne 0x00) {
-        return $response[4]
-    }
+    param([int]$DevIdx, [int]$FeatureId, [int]$ReportLength = $script:QueryLength, [string]$UsageValue = $script:QueryUsage)
+    $response = Send-HidPPRequest -DevIdx $DevIdx -FeatureIndex 0x00 -FunctionByte 0x01 -P1 (($FeatureId -shr 8) -band 0xFF) -P2 ($FeatureId -band 0xFF) -ReportLength $ReportLength -UsageValue $UsageValue
+    if (-not (Test-ValidHidPPReply -Response $response -DevIdx $DevIdx -ReportLength $ReportLength -RequestFeatureIndex 0x00)) { return $null }
+    if ($response[2] -eq 0x00 -and $response[4] -ne 0x00) { return $response[4] }
     return $null
 }
 
 # FEATURE_SET.getCount() + getFeatureID(i) for every i -> full feature table.
 function Get-FullFeatureTable {
-    param([int]$DevIdx)
-    $fsIndex = Get-FeatureIndexFor -DevIdx $DevIdx -FeatureId 0x0001
+    param([int]$DevIdx, [int]$ReportLength = $script:QueryLength, [string]$UsageValue = $script:QueryUsage)
+    $fsIndex = Get-FeatureIndexFor -DevIdx $DevIdx -FeatureId 0x0001 -ReportLength $ReportLength -UsageValue $UsageValue
     if ($null -eq $fsIndex) { return $null }
 
-    $countResp = Send-HidPPRequest -DevIdx $DevIdx -FeatureIndex $fsIndex -FunctionByte 0x01
+    $countResp = Send-HidPPRequest -DevIdx $DevIdx -FeatureIndex $fsIndex -FunctionByte 0x01 -ReportLength $ReportLength -UsageValue $UsageValue
     if ($null -eq $countResp) { return $null }
     $count = $countResp[4]
 
     $table = @()
     for ($i = 1; $i -le $count; $i++) {
-        $idResp = Send-HidPPRequest -DevIdx $DevIdx -FeatureIndex $fsIndex -FunctionByte 0x11 -P1 $i
+        $idResp = Send-HidPPRequest -DevIdx $DevIdx -FeatureIndex $fsIndex -FunctionByte 0x11 -P1 $i -ReportLength $ReportLength -UsageValue $UsageValue
         if ($null -ne $idResp) {
             $featureId = ($idResp[4] * 256) + $idResp[5]
             $table += [PSCustomObject]@{ FeatureIndex = $i; FeatureId = $featureId }
@@ -250,54 +301,78 @@ if ($devices.Count -gt 0) {
 Write-Host "If your receiver isn't listed, or nothing responds below, re-run with -VidPid / -UsagePage adjusted to match what's shown above."
 Write-Host ""
 
-if ($Usage -eq "") {
-    Write-Host "=== Step 2: auto-detecting which HID usage actually answers HID++ ===" -ForegroundColor Cyan
-    Write-Host "A single -UsagePage can match several collections (e.g. short vs. long HID++ reports);"
-    Write-Host "probing each candidate with a harmless root-feature ping to find the live one."
-    $usageCandidates = @("0x0001", "0x0002", "0x0004")
-    $pickedUsage = $null
-    foreach ($candidateUsage in $usageCandidates) {
-        $Usage = $candidateUsage
-        if (Test-DeviceAlive -DevIdx 1) {
-            Write-Host ("  usage {0}: responds -- using this one" -f $candidateUsage) -ForegroundColor Green
-            $pickedUsage = $candidateUsage
-            break
-        } else {
-            Write-Host ("  usage {0}: no response" -f $candidateUsage) -ForegroundColor DarkGray
-        }
-    }
-    if ($null -eq $pickedUsage) {
-        Write-Host "  none of the common usages responded on device index 1 -- leaving usage unfiltered and hoping for the best." -ForegroundColor Yellow
-        $Usage = ""
-    }
-    Write-Host ""
+# (usage, report length) combinations to try. Different devices/receivers
+# need different ones for *query* commands, and -- as this project's own
+# hardware turned out to demonstrate -- even different device indices on the
+# very same receiver can require different combos (the receiver's own
+# pseudo-index 0xFF answers short reports while an actual paired device
+# answers only long ones, or vice versa). So this isn't detected once
+# up front; each device index below finds its own working combo.
+$comboCandidates = @(
+    @{ Usage = "0x0002"; Length = 20 }
+    @{ Usage = "0x0001"; Length = 7 }
+    @{ Usage = "0x0001"; Length = 20 }
+    @{ Usage = "0x0002"; Length = 7 }
+    @{ Usage = "0x0004"; Length = 20 }
+    @{ Usage = "0x0004"; Length = 7 }
+    @{ Usage = ""; Length = 7 }
+    @{ Usage = ""; Length = 20 }
+)
+$script:lastWorkingCombo = $null
+
+function Get-OrderedCombos {
+    if ($null -eq $script:lastWorkingCombo) { return $comboCandidates }
+    $rest = $comboCandidates | Where-Object { -not ($_.Usage -eq $script:lastWorkingCombo.Usage -and $_.Length -eq $script:lastWorkingCombo.Length) }
+    return @($script:lastWorkingCombo) + $rest
 }
 
-Write-Host "=== Step 3: scanning device indices 1..$MaxDeviceIndex for known host-switch features ===" -ForegroundColor Cyan
+function Format-ComboLabel {
+    param($Combo)
+    $usageLabel = $Combo.Usage
+    if ($usageLabel -eq "") { $usageLabel = "(unfiltered)" }
+    return "usage $usageLabel, $($Combo.Length)-byte reports"
+}
+
+Write-Host "=== Step 2: scanning device indices 1..$MaxDeviceIndex for known host-switch features ===" -ForegroundColor Cyan
+Write-Host "For each device index, tries (usage, HID++ report length) combinations until one gets a real"
+Write-Host "reply -- a single -UsagePage can match several collections, and which one answers *queries*"
+Write-Host "varies by device (short 7-byte vs. long 20-byte reports), sometimes even per device index."
+Write-Host ""
 $found = @()
 $respondingIndices = @()
 
 for ($devIdx = 1; $devIdx -le $MaxDeviceIndex; $devIdx++) {
-    $hits = @()
+    $workingCombo = $null
+    foreach ($combo in (Get-OrderedCombos)) {
+        $response = Send-HidPPRequest -DevIdx $devIdx -FeatureIndex 0x00 -FunctionByte 0x01 -P1 0x00 -P2 0x01 -ReportLength $combo.Length -UsageValue $combo.Usage
+        if (Test-ValidHidPPReply -Response $response -DevIdx $devIdx -ReportLength $combo.Length -RequestFeatureIndex 0x00) {
+            $workingCombo = $combo
+            $script:lastWorkingCombo = $combo
+            break
+        }
+    }
 
+    if ($null -eq $workingCombo) {
+        Write-Host ("Device index {0}: no response on any (usage, report length) combination" -f $devIdx) -ForegroundColor DarkGray
+        continue
+    }
+
+    $respondingIndices += [PSCustomObject]@{ DeviceIndex = $devIdx; Combo = $workingCombo }
+    $hits = @()
     foreach ($featureId in $HostSwitchCandidateIds.Keys) {
-        $featureIndex = Get-FeatureIndexFor -DevIdx $devIdx -FeatureId $featureId
+        $featureIndex = Get-FeatureIndexFor -DevIdx $devIdx -FeatureId $featureId -ReportLength $workingCombo.Length -UsageValue $workingCombo.Usage
         if ($null -ne $featureIndex) {
-            $hits += [PSCustomObject]@{ DeviceIndex = $devIdx; FeatureIndex = $featureIndex; FeatureId = $featureId; Name = $HostSwitchCandidateIds[$featureId] }
+            $hits += [PSCustomObject]@{ DeviceIndex = $devIdx; FeatureIndex = $featureIndex; FeatureId = $featureId; Name = $HostSwitchCandidateIds[$featureId]; Usage = $workingCombo.Usage; Length = $workingCombo.Length }
         }
     }
 
     if ($hits.Count -gt 0) {
-        $respondingIndices += $devIdx
         foreach ($hit in $hits) {
-            Write-Host ("Device index {0}: {1} (0x{2:X4}) found at feature index 0x{3:X2}" -f $hit.DeviceIndex, $hit.Name, $hit.FeatureId, $hit.FeatureIndex) -ForegroundColor Green
+            Write-Host ("Device index {0} ({1}): {2} (0x{3:X4}) found at feature index 0x{4:X2}" -f $hit.DeviceIndex, (Format-ComboLabel $workingCombo), $hit.Name, $hit.FeatureId, $hit.FeatureIndex) -ForegroundColor Green
             $found += $hit
         }
-    } elseif (Test-DeviceAlive -DevIdx $devIdx) {
-        $respondingIndices += $devIdx
-        Write-Host ("Device index {0}: responded, but none of the known host-switch features matched" -f $devIdx) -ForegroundColor DarkGray
     } else {
-        Write-Host ("Device index {0}: no response" -f $devIdx) -ForegroundColor DarkGray
+        Write-Host ("Device index {0} ({1}): responded, but none of the known host-switch features matched" -f $devIdx, (Format-ComboLabel $workingCombo)) -ForegroundColor DarkGray
     }
 }
 
@@ -305,7 +380,7 @@ if ($found.Count -eq 0) {
     if ($respondingIndices.Count -eq 0) {
         Write-Host ""
         Write-Host "No device responded on any index 1..$MaxDeviceIndex." -ForegroundColor Yellow
-        Write-Host "Adjust -VidPid / -UsagePage / -Usage using the Step 1 listing above, or raise -MaxDeviceIndex."
+        Write-Host "Adjust -VidPid / -UsagePage using the Step 1 listing above, or raise -MaxDeviceIndex."
         exit 1
     }
 
@@ -316,9 +391,9 @@ if ($found.Count -eq 0) {
     Write-Host "are destructive and guessing at those isn't safe to automate."
     Write-Host ""
 
-    foreach ($devIdx in $respondingIndices) {
-        Write-Host ("--- Device index {0} ---" -f $devIdx)
-        $table = Get-FullFeatureTable -DevIdx $devIdx
+    foreach ($responding in $respondingIndices) {
+        Write-Host ("--- Device index {0} ({1}) ---" -f $responding.DeviceIndex, (Format-ComboLabel $responding.Combo))
+        $table = Get-FullFeatureTable -DevIdx $responding.DeviceIndex -ReportLength $responding.Combo.Length -UsageValue $responding.Combo.Usage
         if ($null -eq $table -or $table.Count -eq 0) {
             Write-Host "  (couldn't enumerate -- FEATURE_SET not found or didn't respond)" -ForegroundColor DarkGray
             continue
@@ -338,7 +413,7 @@ if ($found.Count -eq 0) {
 }
 
 Write-Host ""
-Write-Host "=== Step 4: autonomously testing candidates ===" -ForegroundColor Cyan
+Write-Host "=== Step 3: autonomously testing candidates ===" -ForegroundColor Cyan
 Write-Host "This sends real 'switch host' commands. Success is detected by the device going silent on" -ForegroundColor Yellow
 Write-Host "this receiver right after a command (i.e. it actually jumped elsewhere) -- if it works, your" -ForegroundColor Yellow
 Write-Host "mouse WILL disconnect from this PC. Use its physical Easy-Switch button (or just wait) to" -ForegroundColor Yellow
@@ -353,6 +428,12 @@ Write-Host ""
 $defaultFunctionOrder = @(1, 2, 3, 4)
 $orderedCandidates = $found | Sort-Object -Property @{Expression = { $_.FeatureId -eq 0x1814 }; Descending = $true }, @{Expression = { $_.FeatureId -eq 0x1815 }; Descending = $true }
 
+# Try the *write* command with both report lengths: many devices (like this
+# project's original MX Master 3 setup) only need short 7-byte reports for a
+# one-way "set" command even when queries required long 20-byte ones, but
+# that's not guaranteed for every device, so both are attempted.
+$writeLengthOrder = @(7, 20)
+
 foreach ($candidate in $orderedCandidates) {
     Write-Host ("Candidate: device index {0}, feature index 0x{1:X2} ({2})" -f $candidate.DeviceIndex, $candidate.FeatureIndex, $candidate.Name)
 
@@ -362,25 +443,35 @@ foreach ($candidate in $orderedCandidates) {
     foreach ($fn in $functionOrder) {
         $functionByte = ($fn * 16) + 1   # function nibble | swID (swID = 1, arbitrary)
 
-        foreach ($channel in @(1, 2, 3)) {
-            $channelByte = $channel - 1
+        foreach ($writeLength in $writeLengthOrder) {
+            foreach ($channel in @(1, 2, 3)) {
+                $channelByte = $channel - 1
 
-            if (-not (Test-DeviceAlive -DevIdx $candidate.DeviceIndex)) {
-                Write-Host ("  device index {0} stopped responding -- it may have already switched; skipping remaining tries for it" -f $candidate.DeviceIndex) -ForegroundColor DarkGray
-                break
-            }
+                if (-not (Test-DeviceAlive -DevIdx $candidate.DeviceIndex -ReportLength $candidate.Length -UsageValue $candidate.Usage)) {
+                    Write-Host ("  device index {0} stopped responding -- it may have already switched; skipping remaining tries for it" -f $candidate.DeviceIndex) -ForegroundColor DarkGray
+                    break
+                }
 
-            Write-Host ("  trying function {0} (byte 0x{1:X2}), channel {2}..." -f $fn, $functionByte, $channel)
-            Send-HidPPRequest -DevIdx $candidate.DeviceIndex -FeatureIndex $candidate.FeatureIndex -FunctionByte $functionByte -P1 $channelByte | Out-Null
-            Start-Sleep -Milliseconds 500
+                Write-Host ("  trying function {0} (byte 0x{1:X2}), {2}-byte report, channel {3}..." -f $fn, $functionByte, $writeLength, $channel)
+                # The write itself always goes out via the unfiltered usage (matches
+                # this project's proven production convention); only the length varies.
+                Send-HidPPRequest -DevIdx $candidate.DeviceIndex -FeatureIndex $candidate.FeatureIndex -FunctionByte $functionByte -P1 $channelByte -ReportLength $writeLength -UsageValue "" | Out-Null
+                Start-Sleep -Milliseconds 500
 
-            if (-not (Test-DeviceAlive -DevIdx $candidate.DeviceIndex)) {
-                Write-Host ""
-                Write-Host "Success -- device index $($candidate.DeviceIndex) went silent right after that command, meaning it switched." -ForegroundColor Green
-                Write-Host "Use this in SwitchChannel() in your .ahk script:" -ForegroundColor Green
-                Write-Host ("  0x10,0x{0:X2},0x{1:X2},0x{2:X2},0x<channel>,0x00,0x00" -f $candidate.DeviceIndex, $candidate.FeatureIndex, $functionByte) -ForegroundColor Green
-                Write-Host "  (replace 0x<channel> with 0x00 / 0x01 / 0x02 for channel 1 / 2 / 3, and update ReceiverVidPid to match your receiver)"
-                exit 0
+                if (-not (Test-DeviceAlive -DevIdx $candidate.DeviceIndex -ReportLength $candidate.Length -UsageValue $candidate.Usage)) {
+                    Write-Host ""
+                    Write-Host "Success -- device index $($candidate.DeviceIndex) went silent right after that command, meaning it switched." -ForegroundColor Green
+                    Write-Host "Use this in SwitchChannel() in your .ahk script:" -ForegroundColor Green
+                    if ($writeLength -eq 20) {
+                        Write-Host ("  0x11,0x{0:X2},0x{1:X2},0x{2:X2},0x<channel>,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00" -f $candidate.DeviceIndex, $candidate.FeatureIndex, $functionByte) -ForegroundColor Green
+                        Write-Host "  (--length 20 in the --send-output command)"
+                    } else {
+                        Write-Host ("  0x10,0x{0:X2},0x{1:X2},0x{2:X2},0x<channel>,0x00,0x00" -f $candidate.DeviceIndex, $candidate.FeatureIndex, $functionByte) -ForegroundColor Green
+                        Write-Host "  (--length 7 in the --send-output command)"
+                    }
+                    Write-Host "  (replace 0x<channel> with 0x00 / 0x01 / 0x02 for channel 1 / 2 / 3, and update ReceiverVidPid to match your receiver)"
+                    exit 0
+                }
             }
         }
     }

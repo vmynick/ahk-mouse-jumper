@@ -103,17 +103,18 @@ To find *your* values instead of sniffing USB traffic by hand, run the included 
 ```
 
 It runs fully autonomously, no manual input required:
-1. Lists the HID collections it can see as a table, and auto-detects which usage on
-   your `-UsagePage` is the live HID++ channel (a page often has several collections,
-   e.g. short vs. long HID++ reports, and only one answers).
-2. Scans every device index for the HID++ features known to relate to host switching
-   (`CHANGE_HOST`, `HOSTS_INFO`, and a couple of related pairing features) and reports
-   which `deviceIndex` / `featureIndex` combination supports one.
-3. Autonomously tries the plausible function numbers and channels against each
-   candidate, firing a real "switch host" command each time. Success is detected by the
-   device going silent on this receiver right after a command — i.e. it actually jumped
-   to another host — so there's nothing to eyeball. The moment that happens, it stops
-   and prints the exact bytes to use in `SwitchChannel()`.
+1. Lists the HID collections it can see as a table.
+2. Scans every device index, auto-detecting which (usage, HID++ report length)
+   combination gets real replies out of *that* index — a single `-UsagePage` often has
+   several collections (e.g. short 7-byte vs. long 20-byte HID++ reports), and it can
+   vary even between device indices on the same receiver, not just between receivers.
+   Each responding index is checked for the HID++ features known to relate to host
+   switching (`CHANGE_HOST`, `HOSTS_INFO`, and a couple of related pairing features).
+3. Autonomously tries the plausible function numbers, report lengths, and channels
+   against each candidate found, firing a real "switch host" command each time. Success
+   is detected by the device going silent on this receiver right after a command — i.e.
+   it actually jumped to another host — so there's nothing to eyeball. The moment that
+   happens, it stops and prints the exact bytes to use in `SwitchChannel()`.
 
 Because it really fires host-switch commands, if it succeeds **your mouse will jump off
 this PC during the test** — that's the proof the codes work. Use the mouse's physical
