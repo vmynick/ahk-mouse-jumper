@@ -12,17 +12,21 @@
   feature lands on) is assigned per firmware/pairing, not fixed across
   hardware -- and some receivers don't even expose the same feature.
 
-  This script automates the discovery instead of requiring a USB sniffer:
-    1. Lists the Logitech HID collections it can see, so you can confirm
-       VID:PID / usagePage / usage.
-    2. Quick-checks each device index for the two features known to relate
+  This script automates the discovery instead of requiring a USB sniffer,
+  and doesn't assume anything about which exact mouse/receiver you have:
+    1. Lists the matching HID collections as a table (VID:PID, usagePage,
+       usage, interface), so you can confirm what's actually connected.
+    2. Auto-detects which usage on that usagePage is the live HID++ channel
+       (a single usagePage often has several collections, e.g. short vs.
+       long HID++ reports, and only one answers).
+    3. Quick-checks each device index for the two features known to relate
        to host switching: CHANGE_HOST (0x1814, used by this project's
        original MX Master 3 setup) and HOSTS_INFO (0x1815, used on newer
        receivers/devices).
-    3. If neither is found anywhere, falls back to dumping the *entire*
+    4. If neither is found anywhere, falls back to dumping the *entire*
        HID++ feature table of every responding device index, so you can
        identify the right feature even if it's neither of the above.
-    4. Lets you brute-force a small set of likely function numbers against
+    5. Lets you brute-force a small set of likely function numbers against
        a chosen device/feature index combo, firing a real "switch to
        channel N" command after each try so you can visually confirm the
        mouse actually jumps before committing the values into your .ahk
@@ -40,8 +44,12 @@
   0xFF00 -- change this if Step 1's listing shows something else.
 
 .PARAMETER Usage
-  Optional HID usage filter, only needed if -UsagePage alone matches more
-  than one collection on your receiver.
+  HID usage filter. Left empty by default, the script auto-detects it by
+  trying the common candidates (0x0001 "short" reports, 0x0002 "long",
+  0x0004) against your receiver and locking onto whichever one actually
+  answers -- a single -usagePage can match several collections (e.g. short
+  vs. long HID++ reports) and only one of them is the right one to use.
+  Pass this explicitly to skip auto-detection.
 
 .PARAMETER MaxDeviceIndex
   Highest HID++ device index to probe (paired-device slot count). 6 covers
@@ -187,10 +195,70 @@ function Get-FullFeatureTable {
     return $table
 }
 
-Write-Host "=== Step 1: Logitech HID collections matching vid $VidPid ===" -ForegroundColor Cyan
-Write-Host (Invoke-HidApiTester -ArgList @("--vidpid", $VidPid, "--list-detail"))
-Write-Host "If your receiver isn't listed, or the probing below never gets a response, re-run with -VidPid / -UsagePage / -Usage adjusted to match what's shown above."
+# Parses hidapitester's --list-detail text output (one indented "key: value"
+# block per device/collection, blank-line separated) into objects, so it
+# displays as a readable table regardless of vendor/device -- this doesn't
+# assume anything Logitech-specific.
+function ConvertFrom-HidApiTesterListDetail {
+    param([string]$Text)
+    $devices = @()
+    $blocks = [regex]::Split($Text.Trim(), '(?:\r?\n){2,}')
+    foreach ($block in $blocks) {
+        $lines = $block -split '\r?\n'
+        if ($lines.Count -eq 0) { continue }
+        $header = $lines[0]
+        if ($header -notmatch '^([0-9A-Fa-f]{4}/[0-9A-Fa-f]{4}):\s*(.*)$') { continue }
+
+        $fields = [ordered]@{ VidPid = $Matches[1]; Name = $Matches[2] }
+        foreach ($line in $lines[1..($lines.Count - 1)]) {
+            if ($line -match '^\s*([A-Za-z_]+)\s*:\s*(.*?)\s*$') {
+                $fields[$Matches[1]] = $Matches[2]
+            }
+        }
+        $devices += [PSCustomObject]$fields
+    }
+    return $devices
+}
+
+Write-Host "=== Step 1: HID collections matching vid $VidPid ===" -ForegroundColor Cyan
+$listOutput = Invoke-HidApiTester -ArgList @("--vidpid", $VidPid, "--list-detail")
+$devices = ConvertFrom-HidApiTesterListDetail -Text $listOutput
+if ($devices.Count -gt 0) {
+    $devices | Format-Table VidPid, Name, usagePage, usage, interface -AutoSize | Out-String | Write-Host
+} else {
+    Write-Host "(none found -- raw hidapitester output below)"
+    Write-Host $listOutput
+}
+Write-Host "If your receiver isn't listed, or nothing responds below, re-run with -VidPid / -UsagePage adjusted to match what's shown above."
 Write-Host ""
+
+if ($Usage -eq "") {
+    Write-Host "=== Step 1b: auto-detecting which HID usage actually answers HID++ ===" -ForegroundColor Cyan
+    Write-Host "A single -UsagePage can match several collections (e.g. short vs. long HID++ reports);"
+    Write-Host "probing each candidate with a harmless root-feature ping to find the live one."
+    $usageCandidates = @("0x0001", "0x0002", "0x0004")
+    $pickedUsage = $null
+    foreach ($candidateUsage in $usageCandidates) {
+        $Usage = $candidateUsage
+        # Root-feature ping for FEATURE_SET (0x0001) on device index 1. Any correctly
+        # addressed 7-byte reply -- even "feature not found" -- proves this usage/collection
+        # is the live HID++ channel; a fully unrelated collection just times out instead.
+        $rawProbe = Send-HidPPRequest -DevIdx 1 -FeatureIndex 0x00 -FunctionByte 0x01 -P1 0x00 -P2 0x01
+        $isAlive = ($null -ne $rawProbe) -and ($rawProbe[0] -eq 0x10) -and ($rawProbe[1] -eq 1) -and ($rawProbe[2] -eq 0x00)
+        if ($isAlive) {
+            Write-Host ("  usage {0}: responds -- using this one" -f $candidateUsage) -ForegroundColor Green
+            $pickedUsage = $candidateUsage
+            break
+        } else {
+            Write-Host ("  usage {0}: no response" -f $candidateUsage) -ForegroundColor DarkGray
+        }
+    }
+    if ($null -eq $pickedUsage) {
+        Write-Host "  none of the common usages responded on device index 1 -- leaving usage unfiltered and hoping for the best." -ForegroundColor Yellow
+        $Usage = ""
+    }
+    Write-Host ""
+}
 
 Write-Host "=== Step 2: probing device indices 1..$MaxDeviceIndex for known host-switch features ===" -ForegroundColor Cyan
 $found = @()
