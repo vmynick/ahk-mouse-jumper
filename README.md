@@ -114,7 +114,9 @@ It runs fully autonomously, no manual input required:
    against each candidate found, firing a real "switch host" command each time. Success
    is detected by the device going silent on this receiver right after a command — i.e.
    it actually jumped to another host — so there's nothing to eyeball. The moment that
-   happens, it stops and prints the exact bytes to use in `SwitchChannel()`.
+   happens, it stops, prints the exact bytes to use in `SwitchChannel()`, and — if it
+   finds `mouse_jumper.ahk` / `mouse_jumper_v2.ahk` next to it — points out the exact
+   file and line to change, with the old and new byte sequence shown side by side.
 
 Because it really fires host-switch commands, if it succeeds **your mouse will jump off
 this PC during the test** — that's the proof the codes work. Use the mouse's physical
@@ -126,6 +128,14 @@ HID++ features it finds along the way, since some (device reset, DFU mode, ...) 
 destructive and guessing at those isn't safe to automate. If nothing on the list is
 found, it prints the full feature table of every responding device instead, so you can
 identify the right one yourself.
+
+By default it only prints what it found and the final result. Pass `-Verbose` to also
+see every (usage, length) combination and every function/channel attempt it tried along
+the way:
+
+```powershell
+.\find_channel_codes.ps1 -Verbose
+```
 
 It needs `hidapitester.exe` next to it, same as the main scripts.
 

@@ -61,13 +61,21 @@
   Highest HID++ device index to probe (paired-device slot count). 6 covers
   Unifying/Bolt receivers; raise it if your receiver supports more.
 
+  By default only the essential lines are shown (what was found, the final result, and
+  where to edit your .ahk file). Pass -Verbose to also see every combination and attempt
+  it tried along the way.
+
 .EXAMPLE
   .\find_channel_codes.ps1
 
 .EXAMPLE
   .\find_channel_codes.ps1 -VidPid 046D:C548 -UsagePage 0xFF00
+
+.EXAMPLE
+  .\find_channel_codes.ps1 -Verbose
 #>
 
+[CmdletBinding()]
 param(
     [string]$HidApiTester = (Join-Path $PSScriptRoot "hidapitester.exe"),
     [string]$VidPid = "046D",
@@ -289,16 +297,83 @@ function ConvertFrom-HidApiTesterListDetail {
     return $devices
 }
 
+# Finds the SwitchChannel() byte-sequence line in a .ahk file next to this
+# script and prints exactly what to change it to. Only handles the common
+# 7-byte-report case with a straight token swap (deviceIndex, featureIndex,
+# functionByte -- the channel placeholder and surrounding zero bytes are
+# left untouched); anything else gets pointed at the byte string printed
+# above instead, since the file would need a bigger structural edit.
+function Show-AhkFileInstructions {
+    param([int]$DeviceIndex, [int]$FeatureIndex, [int]$FunctionByte, [int]$WriteLength)
+
+    $ahkFiles = Get-ChildItem -Path $PSScriptRoot -Filter "*.ahk" -File -ErrorAction SilentlyContinue
+    Write-Host ""
+    Write-Host "=== Where to change it ===" -ForegroundColor Cyan
+    if ($ahkFiles.Count -eq 0) {
+        Write-Host "No .ahk files found next to this script -- update SwitchChannel() in yours by hand using the bytes above."
+        return
+    }
+
+    if ($WriteLength -ne 7) {
+        Write-Host "This project's .ahk scripts send SwitchChannel() as a 7-byte report; your working" -ForegroundColor Yellow
+        Write-Host "command needs $WriteLength bytes instead, which is a bigger change than a simple byte swap"
+        Write-Host "(the --length and the whole report layout differ) -- edit SwitchChannel() by hand using"
+        Write-Host "the byte string printed above."
+        return
+    }
+
+    $pattern = '0x10,0x[0-9A-Fa-f]{2},0x[0-9A-Fa-f]{2},0x[0-9A-Fa-f]{2},(0x\{[^,}]*\}),0x00,0x00'
+    $newDevice = "0x{0:X2}" -f $DeviceIndex
+    $newFeature = "0x{0:X2}" -f $FeatureIndex
+    $newFunction = "0x{0:X2}" -f $FunctionByte
+
+    foreach ($file in $ahkFiles) {
+        $lines = Get-Content -LiteralPath $file.FullName
+        $matchedLineNum = $null
+        $oldSegment = $null
+        $placeholder = $null
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $m = [regex]::Match($lines[$i], $pattern)
+            if ($m.Success) {
+                $matchedLineNum = $i + 1
+                $oldSegment = $m.Value
+                $placeholder = $m.Groups[1].Value
+                break
+            }
+        }
+
+        Write-Host ""
+        if ($null -eq $matchedLineNum) {
+            Write-Host "$($file.Name): couldn't find the SwitchChannel byte pattern automatically -- edit it by hand using the bytes above." -ForegroundColor Yellow
+            continue
+        }
+
+        $newSegment = "0x10,$newDevice,$newFeature,$newFunction,$placeholder,0x00,0x00"
+
+        Write-Host "$($file.Name), line ${matchedLineNum}, inside SwitchChannel():" -ForegroundColor Green
+        Write-Host "  old: $oldSegment"
+        Write-Host "  new: $newSegment" -ForegroundColor Green
+
+        $currentVidPid = $null
+        foreach ($line in $lines) {
+            $vpMatch = [regex]::Match($line, 'ReceiverVidPid\s*:?=\s*"([^"]+)"')
+            if ($vpMatch.Success) { $currentVidPid = $vpMatch.Groups[1].Value; break }
+        }
+        if ($null -ne $currentVidPid) {
+            Write-Host "  Also double check ReceiverVidPid := `"$currentVidPid`" near the top of the file matches your receiver from Step 1 above."
+        }
+    }
+}
+
 Write-Host "=== Step 1: HID collections matching vid $VidPid ===" -ForegroundColor Cyan
 $listOutput = Invoke-HidApiTester -ArgList @("--vidpid", $VidPid, "--list-detail")
 $devices = ConvertFrom-HidApiTesterListDetail -Text $listOutput
 if ($devices.Count -gt 0) {
     $devices | Format-Table VidPid, Name, usagePage, usage, interface -AutoSize | Out-String | Write-Host
 } else {
-    Write-Host "(none found -- raw hidapitester output below)"
-    Write-Host $listOutput
+    Write-Host "(none found -- if that's wrong, re-run with -VidPid / -UsagePage adjusted)" -ForegroundColor Yellow
+    Write-Verbose $listOutput
 }
-Write-Host "If your receiver isn't listed, or nothing responds below, re-run with -VidPid / -UsagePage adjusted to match what's shown above."
 Write-Host ""
 
 # (usage, report length) combinations to try. Different devices/receivers
@@ -334,10 +409,7 @@ function Format-ComboLabel {
 }
 
 Write-Host "=== Step 2: scanning device indices 1..$MaxDeviceIndex for known host-switch features ===" -ForegroundColor Cyan
-Write-Host "For each device index, tries (usage, HID++ report length) combinations until one gets a real"
-Write-Host "reply -- a single -UsagePage can match several collections, and which one answers *queries*"
-Write-Host "varies by device (short 7-byte vs. long 20-byte reports), sometimes even per device index."
-Write-Host ""
+Write-Verbose "For each device index, tries (usage, HID++ report length) combinations until one gets a real reply -- a single -UsagePage can match several collections, and which one answers *queries* varies by device (short 7-byte vs. long 20-byte reports), sometimes even per device index."
 $found = @()
 $respondingIndices = @()
 
@@ -353,7 +425,7 @@ for ($devIdx = 1; $devIdx -le $MaxDeviceIndex; $devIdx++) {
     }
 
     if ($null -eq $workingCombo) {
-        Write-Host ("Device index {0}: no response on any (usage, report length) combination" -f $devIdx) -ForegroundColor DarkGray
+        Write-Verbose ("Device index {0}: no response on any (usage, report length) combination" -f $devIdx)
         continue
     }
 
@@ -372,7 +444,7 @@ for ($devIdx = 1; $devIdx -le $MaxDeviceIndex; $devIdx++) {
             $found += $hit
         }
     } else {
-        Write-Host ("Device index {0} ({1}): responded, but none of the known host-switch features matched" -f $devIdx, (Format-ComboLabel $workingCombo)) -ForegroundColor DarkGray
+        Write-Verbose ("Device index {0} ({1}): responded, but none of the known host-switch features matched" -f $devIdx, (Format-ComboLabel $workingCombo))
     }
 }
 
@@ -435,7 +507,7 @@ $orderedCandidates = $found | Sort-Object -Property @{Expression = { $_.FeatureI
 $writeLengthOrder = @(7, 20)
 
 foreach ($candidate in $orderedCandidates) {
-    Write-Host ("Candidate: device index {0}, feature index 0x{1:X2} ({2})" -f $candidate.DeviceIndex, $candidate.FeatureIndex, $candidate.Name)
+    Write-Verbose ("Candidate: device index {0}, feature index 0x{1:X2} ({2})" -f $candidate.DeviceIndex, $candidate.FeatureIndex, $candidate.Name)
 
     $functionOrder = $defaultFunctionOrder
     if ($candidate.FeatureId -eq 0x1815) { $functionOrder = @(2, 1, 3, 4) }
@@ -448,11 +520,11 @@ foreach ($candidate in $orderedCandidates) {
                 $channelByte = $channel - 1
 
                 if (-not (Test-DeviceAlive -DevIdx $candidate.DeviceIndex -ReportLength $candidate.Length -UsageValue $candidate.Usage)) {
-                    Write-Host ("  device index {0} stopped responding -- it may have already switched; skipping remaining tries for it" -f $candidate.DeviceIndex) -ForegroundColor DarkGray
+                    Write-Verbose ("  device index {0} stopped responding -- it may have already switched; skipping remaining tries for it" -f $candidate.DeviceIndex)
                     break
                 }
 
-                Write-Host ("  trying function {0} (byte 0x{1:X2}), {2}-byte report, channel {3}..." -f $fn, $functionByte, $writeLength, $channel)
+                Write-Verbose ("  trying function {0} (byte 0x{1:X2}), {2}-byte report, channel {3}..." -f $fn, $functionByte, $writeLength, $channel)
                 # The write itself always goes out via the unfiltered usage (matches
                 # this project's proven production convention); only the length varies.
                 Send-HidPPRequest -DevIdx $candidate.DeviceIndex -FeatureIndex $candidate.FeatureIndex -FunctionByte $functionByte -P1 $channelByte -ReportLength $writeLength -UsageValue "" | Out-Null
@@ -470,6 +542,7 @@ foreach ($candidate in $orderedCandidates) {
                         Write-Host "  (--length 7 in the --send-output command)"
                     }
                     Write-Host "  (replace 0x<channel> with 0x00 / 0x01 / 0x02 for channel 1 / 2 / 3, and update ReceiverVidPid to match your receiver)"
+                    Show-AhkFileInstructions -DeviceIndex $candidate.DeviceIndex -FeatureIndex $candidate.FeatureIndex -FunctionByte $functionByte -WriteLength $writeLength
                     exit 0
                 }
             }
