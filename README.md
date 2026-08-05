@@ -102,13 +102,29 @@ To find *your* values instead of sniffing USB traffic by hand, run the included 
 .\find_channel_codes.ps1
 ```
 
-It will:
-1. List the Logitech HID collections it can see (to confirm VID:PID/usagePage/usage).
-2. Probe device indices 1–6 for the "Change Host" HID++ feature and report which
-   `deviceIndex` / `featureIndex` combination supports it.
-3. Let you fire a real channel-switch command against a candidate so you can visually
-   confirm the mouse actually jumps, before you copy the resulting byte string into
-   `SwitchChannel()` in your `.ahk` script.
+It runs fully autonomously, no manual input required:
+1. Lists the HID collections it can see as a table, and auto-detects which usage on
+   your `-UsagePage` is the live HID++ channel (a page often has several collections,
+   e.g. short vs. long HID++ reports, and only one answers).
+2. Scans every device index for the HID++ features known to relate to host switching
+   (`CHANGE_HOST`, `HOSTS_INFO`, and a couple of related pairing features) and reports
+   which `deviceIndex` / `featureIndex` combination supports one.
+3. Autonomously tries the plausible function numbers and channels against each
+   candidate, firing a real "switch host" command each time. Success is detected by the
+   device going silent on this receiver right after a command — i.e. it actually jumped
+   to another host — so there's nothing to eyeball. The moment that happens, it stops
+   and prints the exact bytes to use in `SwitchChannel()`.
+
+Because it really fires host-switch commands, if it succeeds **your mouse will jump off
+this PC during the test** — that's the proof the codes work. Use the mouse's physical
+Easy-Switch button (or just wait) to bring it back, or run the script again on the other
+machine once the mouse arrives there.
+
+It only ever sends commands to that known, curated feature list — never to arbitrary
+HID++ features it finds along the way, since some (device reset, DFU mode, ...) are
+destructive and guessing at those isn't safe to automate. If nothing on the list is
+found, it prints the full feature table of every responding device instead, so you can
+identify the right one yourself.
 
 It needs `hidapitester.exe` next to it, same as the main scripts.
 
