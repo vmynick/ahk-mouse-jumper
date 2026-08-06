@@ -13,9 +13,10 @@ SetBatchLines, -1                       ; Maximum execution speed
 ;
 ; Adds on top of the base version:
 ;   - System tray menu (reconfigure / pause / switch now / reload / exit)
-;   - Ctrl+Alt+P to pause/resume edge-switching
-;   - Ctrl+Alt+S to switch immediately, without touching the screen edge
-;   - Ctrl+Alt+R to re-run the interactive setup wizard on demand
+;   - Ctrl+Alt+Shift+P to pause/resume edge-switching
+;   - Ctrl+Alt+Shift+S to switch immediately, without touching the screen edge
+;   - Ctrl+Alt+Shift+R to re-run the interactive setup wizard on demand
+;     (three modifiers on purpose -- rare enough to not collide with other software)
 ;   - LEFT/RIGHT edge support, not just TOP/BOTTOM
 ;   - Edge detection anchored to a specific monitor's bounds instead of the
 ;     whole virtual desktop, with a setup step to pick which one
@@ -59,9 +60,9 @@ SysGet, MonitorCount, MonitorCount
 ; ==============================================================================
 ; POWER-USER HOTKEYS (work anytime, not just during setup)
 ; ==============================================================================
-^!p::TogglePause()
-^!s::ManualSwitch()
-^!r::ReconfigureNow()
+^!+p::TogglePause()
+^!+s::ManualSwitch()
+^!+r::ReconfigureNow()
 
 ; Show the tray menu, run startup checks, then the startup OSD
 SetupTrayMenu()
@@ -239,17 +240,21 @@ ReconfigureNow() {
 ; ==============================================================================
 ; SYSTEM TRAY MENU
 ; ==============================================================================
+; Item names are plain text on purpose, no `t (tab) alignment trick -- Menu's
+; Check/Uncheck/Default/Rename all look an item up again by its exact name
+; text, and mixing an escaped tab into that name proved unreliable to match
+; back up reliably.
 SetupTrayMenu() {
     Menu, Tray, NoStandard
-    Menu, Tray, Add, Reconfigure...`tCtrl+Alt+R, TrayReconfigure
-    Menu, Tray, Add, Pause Switching`tCtrl+Alt+P, TrayTogglePause
+    Menu, Tray, Add, Reconfigure... (Ctrl+Alt+Shift+R), TrayReconfigure
+    Menu, Tray, Add, Pause Switching (Ctrl+Alt+Shift+P), TrayTogglePause
     Menu, Tray, Add
-    Menu, Tray, Add, Switch Now`tCtrl+Alt+S, TrayManualSwitch
+    Menu, Tray, Add, Switch Now (Ctrl+Alt+Shift+S), TrayManualSwitch
     Menu, Tray, Add
     Menu, Tray, Add, Open Script Folder, TrayOpenFolder
     Menu, Tray, Add, Reload Script, TrayReload
     Menu, Tray, Add, Exit, TrayExit
-    Menu, Tray, Default, Reconfigure...`tCtrl+Alt+R
+    Menu, Tray, Default, Reconfigure... (Ctrl+Alt+Shift+R)
     UpdateTrayTip()
     UpdateTrayPauseCheck()
 }
@@ -287,9 +292,9 @@ UpdateTrayTip() {
 UpdateTrayPauseCheck() {
     global Paused
     if (Paused)
-        Menu, Tray, Check, Pause Switching`tCtrl+Alt+P
+        Menu, Tray, Check, Pause Switching (Ctrl+Alt+Shift+P)
     else
-        Menu, Tray, Uncheck, Pause Switching`tCtrl+Alt+P
+        Menu, Tray, Uncheck, Pause Switching (Ctrl+Alt+Shift+P)
 }
 
 ; ==============================================================================
@@ -469,7 +474,10 @@ SwitchChannel(channel) {
 ; ROUNDED OSD ELEMENT, EXPLICITLY POSITIONED ON THE CHOSEN MONITOR
 ; ==============================================================================
 ShowOSD(Text, ProgressVal := -1, CenterOSD := false) {
-    global Position
+    global                      ; Global function mode -- required because the Gui controls
+                                 ; below are bound to variables (vOSDText, vOSDProgressRange),
+                                 ; and AHK v1 requires a control's associated variable to be
+                                 ; global or static, not function-local.
 
     Gui, OSD:Destroy
     Gui, OSD:+AlwaysOnTop +ToolWindow -Caption +HwndhOSD

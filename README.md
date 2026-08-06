@@ -82,12 +82,13 @@ try alongside an existing `mouse_jumper.ahk` setup without disturbing it.
 **Extra features:**
 - **System tray menu** — right-click the tray icon to reconfigure, pause/resume, switch
   now, open the script folder, reload, or exit.
-- **Hotkeys**, work anytime (not just at startup):
-  - `Ctrl+Alt+P` — pause/resume edge-switching (useful when dragging a window across the
-    trigger edge and you don't want an accidental switch).
-  - `Ctrl+Alt+S` — switch immediately, without needing to touch the screen edge.
-  - `Ctrl+Alt+R` — re-run the interactive setup wizard on demand, without restarting the
-    script.
+- **Hotkeys**, work anytime (not just at startup) — three modifiers on purpose, so they're
+  unlikely to collide with other software's shortcuts:
+  - `Ctrl+Alt+Shift+P` — pause/resume edge-switching (useful when dragging a window across
+    the trigger edge and you don't want an accidental switch).
+  - `Ctrl+Alt+Shift+S` — switch immediately, without needing to touch the screen edge.
+  - `Ctrl+Alt+Shift+R` — re-run the interactive setup wizard on demand, without restarting
+    the script.
 - **Left/right edges**, not just top/bottom, for side-by-side monitor arrangements — the
   setup wizard now asks `[T]op [B]ottom [L]eft [R]ight`.
 - **Per-monitor edge detection** — watches a specific monitor's bounds instead of the
