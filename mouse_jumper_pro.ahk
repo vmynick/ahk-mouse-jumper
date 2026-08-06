@@ -54,6 +54,10 @@ global SetupMode := false
 global SetupStep := 0
 global Paused := false
 
+; Tray menu item position (1-based) of "Pause Switching" -- see SYSTEM TRAY
+; MENU section below for why this is referenced by position, not by name.
+global PauseItemPos := 2
+
 global MonitorCount := 0
 SysGet, MonitorCount, MonitorCount
 
@@ -240,21 +244,25 @@ ReconfigureNow() {
 ; ==============================================================================
 ; SYSTEM TRAY MENU
 ; ==============================================================================
-; Item names are plain text on purpose, no `t (tab) alignment trick -- Menu's
-; Check/Uncheck/Default/Rename all look an item up again by its exact name
-; text, and mixing an escaped tab into that name proved unreliable to match
-; back up reliably.
+; Menu items below are referenced by POSITION ("N&", 1-based) wherever they
+; need to be looked up again (Default, Check/Uncheck), not by their name
+; text -- looking them up by name proved unreliable (AHK v1 "Nonexistent
+; menu item" even for a name that was just added moments earlier in the
+; same thread) regardless of what the name text actually was. Position is
+; immune to that: it's just an index into the menu, no string matching.
+; Item order here is therefore load-bearing -- keep PauseItemPos (declared
+; up top with the other globals) in sync with "Pause Switching"'s Add position.
 SetupTrayMenu() {
     Menu, Tray, NoStandard
     Menu, Tray, Add, Reconfigure... (Ctrl+Alt+Shift+R), TrayReconfigure
-    Menu, Tray, Add, Pause Switching (Ctrl+Alt+Shift+P), TrayTogglePause
+    Menu, Tray, Add, Pause Switching (Ctrl+Alt+Shift+P), TrayTogglePause   ; must stay item #2 -- see PauseItemPos above
     Menu, Tray, Add
     Menu, Tray, Add, Switch Now (Ctrl+Alt+Shift+S), TrayManualSwitch
     Menu, Tray, Add
     Menu, Tray, Add, Open Script Folder, TrayOpenFolder
     Menu, Tray, Add, Reload Script, TrayReload
     Menu, Tray, Add, Exit, TrayExit
-    Menu, Tray, Default, Reconfigure... (Ctrl+Alt+Shift+R)
+    Menu, Tray, Default, 1&
     UpdateTrayTip()
     UpdateTrayPauseCheck()
 }
@@ -290,11 +298,12 @@ UpdateTrayTip() {
 }
 
 UpdateTrayPauseCheck() {
-    global Paused
+    global Paused, PauseItemPos
+    itemRef := PauseItemPos . "&"
     if (Paused)
-        Menu, Tray, Check, Pause Switching (Ctrl+Alt+Shift+P)
+        Menu, Tray, Check, %itemRef%
     else
-        Menu, Tray, Uncheck, Pause Switching (Ctrl+Alt+Shift+P)
+        Menu, Tray, Uncheck, %itemRef%
 }
 
 ; ==============================================================================
