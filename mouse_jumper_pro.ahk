@@ -13,9 +13,10 @@ SetBatchLines, -1                       ; Maximum execution speed
 ;
 ; Adds on top of the base version:
 ;   - System tray menu -- right-click the tray icon for Reconfigure, Pause/
-;     Resume, Switch Now, Open Script Folder, Reload, Exit. No keyboard
-;     shortcuts are bound for these on purpose, so there's nothing that could
-;     collide with another program's hotkeys; everything is a tray click away.
+;     Resume, Switch Now, Open Script Folder, Open Project Website, Reload,
+;     Exit. No keyboard shortcuts are bound for these on purpose, so there's
+;     nothing that could collide with another program's hotkeys; everything
+;     is a tray click away.
 ;   - LEFT/RIGHT edge support, not just TOP/BOTTOM
 ;   - Edge detection anchored to a specific monitor's bounds instead of the
 ;     whole virtual desktop, with a setup step to pick which one
@@ -256,6 +257,7 @@ SetupTrayMenu() {
     Menu, Tray, Add, Switch Now, TrayManualSwitch
     Menu, Tray, Add
     Menu, Tray, Add, Open Script Folder, TrayOpenFolder
+    Menu, Tray, Add, Open Project Website, TrayWebsite
     Menu, Tray, Add, Reload Script, TrayReload
     Menu, Tray, Add, Exit, TrayExit
     UpdateTrayTip()
@@ -275,6 +277,10 @@ return
 
 TrayOpenFolder:
     Run, explorer.exe "%A_ScriptDir%"
+return
+
+TrayWebsite:
+    Run, https://vmynick.github.io/ahk-mouse-jumper/
 return
 
 TrayReload:

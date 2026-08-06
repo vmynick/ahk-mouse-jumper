@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AHK Mouse Jumper — mouse-edge KVM switch for two PCs</title>
+<meta name="description" content="A tiny AutoHotkey utility that turns mouse movement into a KVM-style switch: push the cursor off the screen edge and it jumps to your other PC.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230a0d0b'/%3E%3Crect x='20' y='22' width='36' height='24' rx='3' fill='none' stroke='%2343e08f' stroke-width='4'/%3E%3Crect x='44' y='54' width='36' height='24' rx='3' fill='none' stroke='%2343e08f' stroke-width='4'/%3E%3Cpath d='M38 46 C42 58, 58 58, 62 54' fill='none' stroke='%2300ff7f' stroke-width='4' stroke-dasharray='2 7' stroke-linecap='round'/%3E%3Ccircle cx='62' cy='54' r='4' fill='%2300ff7f'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --font-mono: ui-monospace, "Cascadia Code", "SF Mono", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+    --font-sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    --bg: #f5f7f5;
+    --bg-panel: #ffffff;
+    --bg-inset: #eef2ee;
+    --text: #10201a;
+    --text-dim: #52645b;
+    --border: #d7e1da;
+    --accent: #087a40;
+    --signal: #087a40;
+    --accent-soft: #e2f3e8;
+    --on-accent: #ffffff;
+    --amber: #a8650a;
+    --amber-soft: #fbeed9;
+    --shadow: rgba(20, 40, 30, 0.10);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0a0d0b;
+      --bg-panel: #101512;
+      --bg-inset: #141b17;
+      --text: #e7f3ec;
+      --text-dim: #8aa398;
+      --border: #223028;
+      --accent: #43e08f;
+      --signal: #00ff7f;
+      --accent-soft: rgba(67, 224, 143, 0.12);
+      --on-accent: #05130c;
+      --amber: #ffb454;
+      --amber-soft: rgba(255, 180, 84, 0.14);
+      --shadow: rgba(0, 0, 0, 0.55);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0d0b;
+    --bg-panel: #101512;
+    --bg-inset: #141b17;
+    --text: #e7f3ec;
+    --text-dim: #8aa398;
+    --border: #223028;
+    --accent: #43e08f;
+    --signal: #00ff7f;
+    --accent-soft: rgba(67, 224, 143, 0.12);
+    --on-accent: #05130c;
+    --amber: #ffb454;
+    --amber-soft: rgba(255, 180, 84, 0.14);
+    --shadow: rgba(0, 0, 0, 0.55);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7f5;
+    --bg-panel: #ffffff;
+    --bg-inset: #eef2ee;
+    --text: #10201a;
+    --text-dim: #52645b;
+    --border: #d7e1da;
+    --accent: #087a40;
+    --signal: #087a40;
+    --accent-soft: #e2f3e8;
+    --on-accent: #ffffff;
+    --amber: #a8650a;
+    --amber-soft: #fbeed9;
+    --shadow: rgba(20, 40, 30, 0.10);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  code, .mono { font-family: var(--font-mono); }
+
+  ::selection { background: var(--accent-soft); color: var(--text); }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px;
+  }
+
+  /* ---------- Nav ---------- */
+  header.nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(10px);
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px; max-width: 1080px; margin: 0 auto; gap: 16px; flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; text-decoration: none; color: var(--text); font-family: var(--font-mono); font-weight: 600; font-size: 0.98rem; }
+  .brand svg { width: 22px; height: 22px; flex-shrink: 0; }
+  .brand .caret { display: inline-block; width: 8px; height: 1.1em; background: var(--signal); margin-left: 1px; vertical-align: -2px; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  nav.links { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+  nav.links a { color: var(--text-dim); text-decoration: none; font-size: 0.88rem; font-weight: 500; }
+  nav.links a:hover { color: var(--text); }
+  .nav-actions { display: flex; align-items: center; gap: 10px; }
+
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--bg-panel);
+    color: var(--text); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: border-color .15s ease, background .15s ease;
+  }
+  .icon-btn:hover { border-color: var(--accent); background: var(--bg-inset); }
+  .icon-btn svg { width: 17px; height: 17px; }
+  [data-theme="dark"] .icon-sun, html:not([data-theme]) .icon-sun { display: none; }
+  [data-theme="light"] .icon-moon { display: none; }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme]) .icon-sun { display: none; }
+    html:not([data-theme]) .icon-moon { display: block; }
+  }
+  html:not([data-theme]) .icon-moon { display: none; }
+  [data-theme="dark"] .icon-moon { display: block; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-radius: 6px; font-weight: 600; font-size: 0.88rem;
+    text-decoration: none; border: 1px solid transparent; cursor: pointer;
+    font-family: var(--font-mono);
+    transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--accent); color: var(--on-accent); }
+  .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ---------- Hero ---------- */
+  .hero { position: relative; padding: 76px 0 60px; overflow: hidden; }
+  .hero-grid-bg {
+    position: absolute; inset: -40px -40px auto -40px; height: 480px; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 34px 34px;
+    opacity: 0.35;
+    mask-image: linear-gradient(to bottom, black, transparent 85%);
+    -webkit-mask-image: linear-gradient(to bottom, black, transparent 85%);
+  }
+  .hero-inner { position: relative; z-index: 1; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; }
+  @media (max-width: 860px) { .hero-inner { grid-template-columns: 1fr; } }
+
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    color: var(--text-dim); font-family: var(--font-mono); font-size: 0.8rem;
+    margin-bottom: 20px; letter-spacing: .01em;
+  }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  h1 { font-size: clamp(2rem, 4.4vw, 3rem); line-height: 1.14; margin: 0 0 18px; font-weight: 700; letter-spacing: -0.015em; text-wrap: balance; }
+  .signal-text { color: var(--accent); }
+  .caret-block { display: inline-block; width: 0.5em; height: 0.85em; background: var(--signal); vertical-align: -0.08em; animation: blink 1.1s steps(1) infinite; }
+  .hero p.lead { color: var(--text-dim); font-size: 1.05rem; max-width: 52ch; margin: 0 0 30px; }
+  .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 26px; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; font-family: var(--font-mono); }
+  .pill {
+    font-size: 0.76rem; color: var(--text-dim);
+    border: 1px solid var(--border); background: var(--bg-panel);
+    padding: 4px 9px; border-radius: 4px;
+  }
+
+  /* ---------- Diagram / HUD frame ---------- */
+  .hud-frame { position: relative; }
+  .corner { position: absolute; width: 14px; height: 14px; border-color: var(--accent); z-index: 2; }
+  .c-tl { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+  .c-tr { top: -1px; right: -1px; border-top: 2px solid; border-right: 2px solid; }
+  .c-bl { bottom: -1px; left: -1px; border-bottom: 2px solid; border-left: 2px solid; }
+  .c-br { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+
+  .diagram-card {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 26px 22px 18px; box-shadow: 0 24px 50px -28px var(--shadow);
+  }
+  .diagram-card svg.main-svg { width: 100%; height: auto; display: block; }
+  .diagram-caption {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border);
+    font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-dim);
+  }
+  .diagram-caption .status { color: var(--signal); }
+
+  /* ---------- Sections ---------- */
+  section { padding: 64px 0; }
+  .section-head {
+    max-width: 640px; margin: 0 0 40px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+  }
+  .kicker { color: var(--text-dim); font-family: var(--font-mono); font-size: 0.78rem; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+  .kicker::before { content: "// "; color: var(--accent); }
+  h2 { font-size: clamp(1.4rem, 2.6vw, 1.9rem); margin: 0 0 10px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+  .section-head p { color: var(--text-dim); margin: 0; max-width: 56ch; }
+
+  /* Steps */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  @media (max-width: 900px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 540px) { .steps { grid-template-columns: 1fr; } }
+  .step-card { background: var(--bg-panel); padding: 22px; }
+  .step-num { font-family: var(--font-mono); color: var(--accent); font-size: 0.8rem; margin-bottom: 12px; }
+  .step-card h3 { margin: 0 0 6px; font-size: 1rem; }
+  .step-card p { margin: 0; color: var(--text-dim); font-size: 0.89rem; }
+
+  /* Features */
+  .features { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 980px) { .features { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .features { grid-template-columns: 1fr; } }
+  .feature-card {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px;
+    transition: border-color .15s ease;
+  }
+  .feature-card:hover { border-color: var(--accent); }
+  .feature-icon {
+    width: 34px; height: 34px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px; background: var(--bg-inset); border: 1px solid var(--border); color: var(--accent);
+  }
+  .feature-icon.warn { color: var(--amber); }
+  .feature-icon svg { width: 17px; height: 17px; }
+  .feature-card h3 { margin: 0 0 6px; font-size: 0.95rem; }
+  .feature-card p { margin: 0; color: var(--text-dim); font-size: 0.87rem; }
+
+  /* Get started */
+  .start-grid { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 40px; align-items: start; }
+  @media (max-width: 860px) { .start-grid { grid-template-columns: 1fr; } }
+  .start-steps { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+  .start-steps li { counter-increment: s; display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .start-steps li:last-child { border-bottom: none; }
+  .start-steps li::before {
+    content: counter(s, decimal-leading-zero); flex-shrink: 0; font-family: var(--font-mono);
+    color: var(--accent); font-size: 0.85rem; padding-top: 1px;
+  }
+  .start-steps b { display: block; margin-bottom: 2px; font-size: 0.95rem; }
+  .start-steps span { color: var(--text-dim); font-size: 0.88rem; }
+
+  .code-block {
+    background: #0a0d0b; color: #d9f2e4; border-radius: 10px; padding: 20px 22px;
+    font-family: var(--font-mono); font-size: 0.84rem;
+    overflow-x: auto; border: 1px solid #1c2a22;
+  }
+  .code-block .c1 { color: #5f7568; }
+  .code-block .c2 { color: #00ff7f; }
+  .code-block div { white-space: pre; padding: 2px 0; }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 560px; }
+  th, td { text-align: left; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-size: 0.74rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; font-family: var(--font-mono); }
+  tr:last-child td { border-bottom: none; }
+  td code { color: var(--text); }
+  .tag { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim); }
+  .tag.v { color: var(--accent); }
+
+  /* CTA panel */
+  .cta {
+    border-radius: 10px; padding: 46px 40px; position: relative; overflow: hidden;
+    background: var(--bg-panel); border: 1px solid var(--border); border-top: 3px solid var(--accent);
+  }
+  .cta .kicker { margin-bottom: 12px; }
+  .cta h2 { margin-bottom: 12px; }
+  .cta p { color: var(--text-dim); max-width: 56ch; margin: 0 0 24px; }
+  .cta .hero-actions { margin-bottom: 0; }
+
+  /* Footer */
+  footer { border-top: 1px solid var(--border); padding: 30px 0 46px; }
+  .footer-inner { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .footer-inner p { margin: 0; color: var(--text-dim); font-size: 0.84rem; font-family: var(--font-mono); }
+  .footer-links { display: flex; gap: 18px; flex-wrap: wrap; }
+  .footer-links a { color: var(--text-dim); text-decoration: none; font-size: 0.84rem; }
+  .footer-links a:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)">
+        <rect x="4" y="4" width="9" height="7" rx="1.2"/>
+        <rect x="11" y="13" width="9" height="7" rx="1.2"/>
+        <path d="M8.5 11v2M15.5 13v-2" stroke-dasharray="2 2"/>
+      </svg>
+      mouse_jumper.ahk<span class="caret"></span>
+    </a>
+    <nav class="links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#start">Get started</a>
+      <a href="#scripts">Scripts</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <a class="btn btn-ghost" href="https://github.com/vmynick/ahk-mouse-jumper">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 .5C5.7.5.7 5.6.7 12c0 5.1 3.3 9.4 7.9 11 .6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.4-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2.9-.3 2-.4 3-.4s2.1.1 3 .4c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.6 7.9-5.9 7.9-11C23.3 5.6 18.3.5 12 .5z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="hero-grid-bg" aria-hidden="true"></div>
+    <div class="wrap hero-inner">
+      <div>
+        <div class="eyebrow"><span class="dot"></span> open-source · AutoHotkey · Windows</div>
+        <h1>Push the cursor off the edge.<br>Watch it <span class="signal-text">jump</span> to the other PC<span class="caret-block"></span></h1>
+        <p class="lead">A tiny AutoHotkey utility that turns mouse movement into a KVM-style switch. Two PCs share one Logitech Easy-Switch receiver — no hardware KVM box, no extra cables, just an edge and a dwell.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://github.com/vmynick/ahk-mouse-jumper">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 .5C5.7.5.7 5.6.7 12c0 5.1 3.3 9.4 7.9 11 .6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.4-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2.9-.3 2-.4 3-.4s2.1.1 3 .4c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.6 7.9-5.9 7.9-11C23.3 5.6 18.3.5 12 .5z"/></svg>
+            View on GitHub
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/vmynick/ahk-mouse-jumper#readme">Read the docs</a>
+        </div>
+        <div class="badges">
+          <span class="pill">MIT</span>
+          <span class="pill">AHK v1.1 &amp; v2.0</span>
+          <span class="pill">no extra hardware</span>
+        </div>
+      </div>
+
+      <div class="diagram-card hud-frame">
+        <span class="corner c-tl"></span><span class="corner c-tr"></span>
+        <span class="corner c-bl"></span><span class="corner c-br"></span>
+        <svg class="main-svg" viewBox="0 0 380 260" xmlns="http://www.w3.org/2000/svg">
+          <!-- TOP monitor -->
+          <rect x="26" y="14" width="150" height="90" rx="6" fill="none" stroke="var(--border)" stroke-width="2"/>
+          <line x1="26" y1="34" x2="176" y2="34" stroke="var(--border)" stroke-width="1"/>
+          <text x="38" y="27" font-size="10" fill="var(--text-dim)" font-family="var(--font-mono)">PC A · TOP</text>
+          <rect x="90" y="104" width="26" height="6" rx="2" fill="var(--border)"/>
+
+          <!-- BOTTOM monitor -->
+          <rect x="204" y="156" width="150" height="90" rx="6" fill="none" stroke="var(--border)" stroke-width="2"/>
+          <line x1="204" y1="176" x2="354" y2="176" stroke="var(--border)" stroke-width="1"/>
+          <text x="216" y="169" font-size="10" fill="var(--text-dim)" font-family="var(--font-mono)">PC B · BOTTOM</text>
+          <rect x="264" y="150" width="26" height="6" rx="2" fill="var(--border)"/>
+
+          <!-- jump path -->
+          <path d="M101 104 C 130 130, 250 130, 279 156" fill="none" stroke="var(--signal)" stroke-width="2" stroke-dasharray="1 6" stroke-linecap="round"/>
+          <circle cx="101" cy="104" r="3.5" fill="var(--text-dim)"/>
+
+          <!-- dwell progress ring at the seam -->
+          <g transform="translate(190,130)">
+            <circle r="22" fill="var(--bg-inset)" stroke="var(--border)" stroke-width="1.5"/>
+            <circle r="22" fill="none" stroke="var(--signal)" stroke-width="2.5"
+              stroke-dasharray="103.7" stroke-dashoffset="34" stroke-linecap="round" transform="rotate(-90)"/>
+            <text y="-2" text-anchor="middle" font-size="9" font-family="var(--font-mono)" fill="var(--text)" font-weight="600">67%</text>
+            <text y="10" text-anchor="middle" font-size="7" font-family="var(--font-mono)" fill="var(--text-dim)">DWELL</text>
+          </g>
+
+          <!-- channel badge -->
+          <g transform="translate(279,156)">
+            <circle r="5" fill="var(--amber)"/>
+            <text x="10" y="3" font-size="9" font-family="var(--font-mono)" fill="var(--amber)">CH 1</text>
+          </g>
+        </svg>
+        <div class="diagram-caption">
+          <span>hidapitester → HID++ 0x10 0x01 0x0A…</span>
+          <span class="status">● switching</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">under the hood</div>
+        <h2>How it works</h2>
+        <p>Four steps run continuously in the background — light enough that a 30ms poll never costs you anything.</p>
+      </div>
+      <div class="steps">
+        <div class="step-card">
+          <div class="step-num">STEP 01</div>
+          <h3>Poll</h3>
+          <p>The script checks the cursor position every 30ms.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">STEP 02</div>
+          <h3>Detect the edge</h3>
+          <p>Each machine is configured as TOP, BOTTOM, LEFT, or RIGHT — switching triggers on the opposite edge.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">STEP 03</div>
+          <h3>Dwell</h3>
+          <p>The cursor must linger at the edge for ~567ms, shown as a progress-bar OSD, so a stray brush never switches you.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">STEP 04</div>
+          <h3>Jump</h3>
+          <p>A HID++ "change host" command fires to the receiver, and the cursor re-centers on the other side with a confirmation.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">mouse jumper pro</div>
+        <h2>Built for real multi-PC desks</h2>
+        <p>The Pro build layers power-user features on top, in both AutoHotkey v1.1 and v2.0, kept in sync.</p>
+      </div>
+      <div class="features">
+        <div class="feature-card">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+          <h3>Tray menu control</h3>
+          <p>Reconfigure, pause/resume, switch now, open the folder, reload, or exit — all from a right-click, no hotkeys to collide with.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/><path d="M5 5l4 4M19 5l-4 4M5 19l4-4M19 19l-4-4"/></svg></div>
+          <h3>Any edge</h3>
+          <p>Top, bottom, left, or right — pick whichever edge matches how your monitors actually sit on the desk.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="9" height="7" rx="1.2"/><rect x="13" y="4" width="9" height="7" rx="1.2"/><path d="M6.5 11v4M17.5 11v4M4 19h5M15 19h5"/></svg></div>
+          <h3>Multi-monitor aware</h3>
+          <p>Bind edge detection to one specific display's bounds instead of the whole virtual desktop.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 15l3-4 3 3 4-6"/></svg></div>
+          <h3>Optional logging</h3>
+          <p>Flip on <code>EnableLogging</code> to record every switch and warning to a plain-text log file.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4.5 8-11V5l-8-3-8 3v6c0 6.5 8 11 8 11z"/></svg></div>
+          <h3>Startup checks</h3>
+          <p>Warns via a tray notification if <code>hidapitester.exe</code> or the configured receiver isn't found.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+          <h3>Dwell-to-switch OSD</h3>
+          <p>A rounded, always-on-top progress bar shows exactly how close you are to triggering a switch.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l16 16M4 20L20 4"/></svg></div>
+          <h3>Zero extra hardware</h3>
+          <p>Reuses the multi-host receiver you already own — no physical KVM switch box, no second set of cables.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l-4 4 4 4M17 8l4 4-4 4M14 4l-4 16"/></svg></div>
+          <h3>AHK v1 &amp; v2</h3>
+          <p>Every script ships in both syntaxes and is kept in sync — run whichever runtime is already on the machine.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">quick start</div>
+        <h2>Up and running in a minute</h2>
+        <p>Do this on both PCs, with the opposite edge on each.</p>
+      </div>
+      <div class="start-grid">
+        <ol class="start-steps">
+          <li><div><b>Clone the repo</b><span>Onto each PC that shares the receiver.</span></div></li>
+          <li><div><b>Run the setup helper</b><span>Checks AutoHotkey, downloads <code>hidapitester.exe</code>, and offers a Startup shortcut.</span></div></li>
+          <li><div><b>Launch the script</b><span>Use the first-run OSD to pick this machine's Position and target Channel.</span></div></li>
+          <li><div><b>Repeat on the other PC</b><span>Same steps, opposite edge — TOP on one, BOTTOM on the other.</span></div></li>
+        </ol>
+        <div class="code-block"><div><span class="c1"># clone</span></div><div>git clone https://github.com/vmynick/ahk-mouse-jumper.git</div><div>cd ahk-mouse-jumper</div><div></div><div><span class="c1"># one-time setup (AutoHotkey check, hidapitester.exe, Startup shortcut)</span></div><div>.\setup.ps1 -Script mouse_jumper_pro.ahk</div><div></div><div><span class="c1"># then just run the script — the first-run OSD walks you through</span></div><div><span class="c2">.\mouse_jumper_pro.ahk</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="scripts">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">pick your build</div>
+        <h2>Scripts in this repo</h2>
+        <p>Base and Pro builds are fully independent, with their own settings files — trying one never disturbs the other.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>File</th><th>AHK version</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="https://github.com/vmynick/ahk-mouse-jumper/blob/master/mouse_jumper.ahk"><code>mouse_jumper.ahk</code></a></td>
+              <td><span class="tag v">v1.1</span></td>
+              <td>Main script</td>
+            </tr>
+            <tr>
+              <td><a href="https://github.com/vmynick/ahk-mouse-jumper/blob/master/mouse_jumper_v2.ahk"><code>mouse_jumper_v2.ahk</code></a></td>
+              <td><span class="tag v">v2.0</span></td>
+              <td>Same behavior, ported to AHK v2 syntax</td>
+            </tr>
+            <tr>
+              <td><a href="https://github.com/vmynick/ahk-mouse-jumper/blob/master/mouse_jumper_pro.ahk"><code>mouse_jumper_pro.ahk</code></a></td>
+              <td><span class="tag v">v1.1</span></td>
+              <td>Extended build — tray menu, any edge, multi-monitor, logging</td>
+            </tr>
+            <tr>
+              <td><a href="https://github.com/vmynick/ahk-mouse-jumper/blob/master/mouse_jumper_pro_v2.ahk"><code>mouse_jumper_pro_v2.ahk</code></a></td>
+              <td><span class="tag v">v2.0</span></td>
+              <td>Same extended build, ported to AHK v2 syntax</td>
+            </tr>
+            <tr>
+              <td><a href="https://github.com/vmynick/ahk-mouse-jumper/blob/master/find_channel_codes.ps1"><code>find_channel_codes.ps1</code></a></td>
+              <td><span class="tag">tool</span></td>
+              <td>Discovers the HID++ codes for <em>your</em> mouse/receiver</td>
+            </tr>
+            <tr>
+              <td><a href="https://github.com/vmynick/ahk-mouse-jumper/blob/master/setup.ps1"><code>setup.ps1</code></a></td>
+              <td><span class="tag">tool</span></td>
+              <td>Optional one-time setup helper</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="cta">
+        <div class="kicker">get involved</div>
+        <h2>Ready to reclaim your desk?</h2>
+        <p>Tested on a Logitech MX Master 3 with a HID++ Easy-Switch receiver. Full setup, config reference, and hardware-adaptation guide live in the README.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://github.com/vmynick/ahk-mouse-jumper">Get the code</a>
+          <a class="btn btn-ghost" href="https://github.com/vmynick/ahk-mouse-jumper#readme">Full documentation</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <p>MIT Licensed · Built with AutoHotkey</p>
+    <div class="footer-links">
+      <a href="https://github.com/vmynick/ahk-mouse-jumper">GitHub</a>
+      <a href="https://github.com/vmynick/ahk-mouse-jumper/blob/master/README.md">README</a>
+      <a href="https://github.com/vmynick/ahk-mouse-jumper/issues">Issues</a>
+      <a href="https://github.com/vmynick/ahk-mouse-jumper/blob/master/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var stored = localStorage.getItem('mj-theme');
+    if (stored) root.setAttribute('data-theme', stored);
+
+    document.getElementById('themeToggle').addEventListener('click', function () {
+      var current = root.getAttribute('data-theme');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var currentlyDark = current ? current === 'dark' : prefersDark;
+      var next = currentlyDark ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem('mj-theme', next);
+    });
+  })();
+</script>
+
+</body>
+</html>

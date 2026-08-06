@@ -14,7 +14,8 @@ SetWorkingDir(A_ScriptDir)
 ; Same feature set as mouse_jumper_pro.ahk:
 ;   - System tray menu with its own icon (Windows' "Mouse" control-panel
 ;     icon) -- Reconfigure, Pause/Resume, Switch Now, Open Script Folder,
-;     Reload, Exit. No keyboard shortcuts; everything is a tray click away.
+;     Open Project Website, Reload, Exit. No keyboard shortcuts; everything
+;     is a tray click away.
 ;   - LEFT/RIGHT edge support, not just TOP/BOTTOM
 ;   - Edge detection anchored to a specific monitor's bounds instead of the
 ;     whole virtual desktop, with a setup step to pick which one
@@ -254,6 +255,7 @@ SetupTrayMenu() {
     A_TrayMenu.Add("Switch Now", (*) => ManualSwitch())
     A_TrayMenu.Add()
     A_TrayMenu.Add("Open Script Folder", (*) => Run('explorer.exe "' . A_ScriptDir . '"'))
+    A_TrayMenu.Add("Open Project Website", (*) => Run("https://vmynick.github.io/ahk-mouse-jumper/"))
     A_TrayMenu.Add("Reload Script", (*) => Reload())
     A_TrayMenu.Add("Exit", (*) => ExitApp())
 

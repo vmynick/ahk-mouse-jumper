@@ -1,6 +1,9 @@
 # AHK Mouse Jumper
 
 [![Lint](https://github.com/vmynick/ahk-mouse-jumper/actions/workflows/lint.yml/badge.svg)](https://github.com/vmynick/ahk-mouse-jumper/actions/workflows/lint.yml)
+[![Website](https://img.shields.io/badge/website-vmynick.github.io%2Fahk--mouse--jumper-7c3aed)](https://vmynick.github.io/ahk-mouse-jumper/)
+
+**[Project website / onepager](https://vmynick.github.io/ahk-mouse-jumper/)**
 
 A tiny AutoHotkey utility that turns mouse movement into a KVM-style switch: push the
 cursor off the top or bottom edge of the screen and it flips a shared Logitech HID++
@@ -68,6 +71,7 @@ first-run wizard.
 | [`mouse_jumper_pro_v2.ahk`](mouse_jumper_pro_v2.ahk) | v2.0 | Same extended build, ported to AHK v2 syntax, using `mouse_jumper_v2.ahk`'s HID++ bytes |
 | [`find_channel_codes.ps1`](find_channel_codes.ps1) | — | PowerShell helper to discover the HID++ codes for *your* mouse/receiver |
 | [`setup.ps1`](setup.ps1) | — | Optional one-time setup helper (AutoHotkey check, `hidapitester.exe` download, Startup shortcut) |
+| [`index.html`](index.html) | — | Source of the [project website](https://vmynick.github.io/ahk-mouse-jumper/), served via GitHub Pages |
 
 `mouse_jumper.ahk` and `mouse_jumper_v2.ahk` are functionally equivalent — use whichever
 matches the AutoHotkey runtime installed on a given machine. `mouse_jumper_pro.ahk` /
@@ -87,8 +91,9 @@ one pro script changes, the other is kept in sync.
 - **System tray menu with its own icon** — uses Windows' own "Mouse" control-panel icon
   (no extra `.ico` file needed) so it's visually distinct from other AutoHotkey scripts at
   a glance. Right-click it for everything: reconfigure, pause/resume switching, switch
-  now, open the script folder, reload, or exit. No keyboard shortcuts are bound for these
-  on purpose, so there's nothing that could collide with another program's hotkeys.
+  now, open the script folder, open the [project website](https://vmynick.github.io/ahk-mouse-jumper/),
+  reload, or exit. No keyboard shortcuts are bound for these on purpose, so there's
+  nothing that could collide with another program's hotkeys.
 - **Left/right edges**, not just top/bottom, for side-by-side monitor arrangements — the
   setup wizard now asks `[T]op [B]ottom [L]eft [R]ight`.
 - **Per-monitor edge detection** — watches a specific monitor's bounds instead of the
