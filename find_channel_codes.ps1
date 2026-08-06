@@ -61,6 +61,12 @@
   Highest HID++ device index to probe (paired-device slot count). 6 covers
   Unifying/Bolt receivers; raise it if your receiver supports more.
 
+.PARAMETER Apply
+  On a confirmed switch, also patch the matching .ahk file(s) in place with
+  the new bytes instead of just printing them. A one-time ".bak" backup of
+  each file is made first (never overwritten if one already exists). Off by
+  default -- pass this explicitly to opt in.
+
   By default only the essential lines are shown (what was found, the final result, and
   where to edit your .ahk file). Pass -Verbose to also see every combination and attempt
   it tried along the way.
@@ -73,6 +79,9 @@
 
 .EXAMPLE
   .\find_channel_codes.ps1 -Verbose
+
+.EXAMPLE
+  .\find_channel_codes.ps1 -Apply
 #>
 
 [CmdletBinding()]
@@ -81,7 +90,8 @@ param(
     [string]$VidPid = "046D",
     [string]$UsagePage = "0xFF00",
     [int]$MaxDeviceIndex = 6,
-    [int]$TimeoutMs = 400
+    [int]$TimeoutMs = 400,
+    [switch]$Apply
 )
 
 # HID++ 2.0 feature IDs known to relate to host/channel switching (from the
@@ -298,13 +308,14 @@ function ConvertFrom-HidApiTesterListDetail {
 }
 
 # Finds the SwitchChannel() byte-sequence line in a .ahk file next to this
-# script and prints exactly what to change it to. Only handles the common
-# 7-byte-report case with a straight token swap (deviceIndex, featureIndex,
-# functionByte -- the channel placeholder and surrounding zero bytes are
-# left untouched); anything else gets pointed at the byte string printed
-# above instead, since the file would need a bigger structural edit.
+# script and prints exactly what to change it to (or, with -Apply, actually
+# makes the change). Only handles the common 7-byte-report case with a
+# straight token swap (deviceIndex, featureIndex, functionByte -- the
+# channel placeholder and surrounding zero bytes are left untouched);
+# anything else gets pointed at the byte string printed above instead,
+# since the file would need a bigger structural edit.
 function Show-AhkFileInstructions {
-    param([int]$DeviceIndex, [int]$FeatureIndex, [int]$FunctionByte, [int]$WriteLength)
+    param([int]$DeviceIndex, [int]$FeatureIndex, [int]$FunctionByte, [int]$WriteLength, [bool]$DoApply = $false)
 
     $ahkFiles = Get-ChildItem -Path $PSScriptRoot -Filter "*.ahk" -File -ErrorAction SilentlyContinue
     Write-Host ""
@@ -353,6 +364,20 @@ function Show-AhkFileInstructions {
         Write-Host "$($file.Name), line ${matchedLineNum}, inside SwitchChannel():" -ForegroundColor Green
         Write-Host "  old: $oldSegment"
         Write-Host "  new: $newSegment" -ForegroundColor Green
+
+        if ($DoApply) {
+            $backupPath = "$($file.FullName).bak"
+            if (-not (Test-Path $backupPath)) {
+                Copy-Item -LiteralPath $file.FullName -Destination $backupPath
+            }
+            # -Raw preserves the file's exact line endings/trailing newline; the
+            # replacement is passed via a MatchEvaluator so $ characters in
+            # $newSegment are never misread as regex backreferences.
+            $content = Get-Content -LiteralPath $file.FullName -Raw
+            $updated = [regex]::Replace($content, [regex]::Escape($oldSegment), { $newSegment }, 1)
+            Set-Content -LiteralPath $file.FullName -Value $updated -NoNewline
+            Write-Host "  Applied. Backup saved to $backupPath" -ForegroundColor Green
+        }
 
         $currentVidPid = $null
         foreach ($line in $lines) {
@@ -542,7 +567,7 @@ foreach ($candidate in $orderedCandidates) {
                         Write-Host "  (--length 7 in the --send-output command)"
                     }
                     Write-Host "  (replace 0x<channel> with 0x00 / 0x01 / 0x02 for channel 1 / 2 / 3, and update ReceiverVidPid to match your receiver)"
-                    Show-AhkFileInstructions -DeviceIndex $candidate.DeviceIndex -FeatureIndex $candidate.FeatureIndex -FunctionByte $functionByte -WriteLength $writeLength
+                    Show-AhkFileInstructions -DeviceIndex $candidate.DeviceIndex -FeatureIndex $candidate.FeatureIndex -FunctionByte $functionByte -WriteLength $writeLength -DoApply $Apply.IsPresent
                     exit 0
                 }
             }

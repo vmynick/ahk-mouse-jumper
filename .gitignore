@@ -1,5 +1,7 @@
 # Generated at runtime, holds this machine's personal settings
 settings.ini
+settings_pro.ini
+mouse_jumper_pro.log
 
 # External binary dependency, download separately (see README)
 hidapitester.exe
@@ -8,4 +10,4 @@ hidapitester.exe
 mouse_jumper_old.ahk
 *.bak
 
-.gitignore
+.claude

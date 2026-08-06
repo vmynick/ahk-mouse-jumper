@@ -1,5 +1,7 @@
 # AHK Mouse Jumper
 
+[![Lint](https://github.com/vmynick/ahk-mouse-jumper/actions/workflows/lint.yml/badge.svg)](https://github.com/vmynick/ahk-mouse-jumper/actions/workflows/lint.yml)
+
 A tiny AutoHotkey utility that turns mouse movement into a KVM-style switch: push the
 cursor off the top or bottom edge of the screen and it flips a shared Logitech HID++
 receiver over to another paired device (another PC), so your mouse (and, if the
@@ -62,10 +64,39 @@ first-run wizard.
 |---|---|---|
 | [`mouse_jumper.ahk`](mouse_jumper.ahk) | v1.1 | Main script |
 | [`mouse_jumper_v2.ahk`](mouse_jumper_v2.ahk) | v2.0 | Same behavior, ported to AHK v2 syntax, for machines running AutoHotkey v2 |
+| [`mouse_jumper_pro.ahk`](mouse_jumper_pro.ahk) | v1.1 | Extended build — tray menu, hotkeys, left/right edges, multi-monitor, logging. See [Mouse Jumper Pro](#mouse-jumper-pro) |
 | [`find_channel_codes.ps1`](find_channel_codes.ps1) | — | PowerShell helper to discover the HID++ codes for *your* mouse/receiver |
+| [`setup.ps1`](setup.ps1) | — | Optional one-time setup helper (AutoHotkey check, `hidapitester.exe` download, Startup shortcut) |
 
-Both scripts are functionally equivalent — use whichever matches the AutoHotkey runtime
-installed on a given machine.
+`mouse_jumper.ahk` and `mouse_jumper_v2.ahk` are functionally equivalent — use whichever
+matches the AutoHotkey runtime installed on a given machine. `mouse_jumper_pro.ahk` is an
+optional, more featureful alternative to `mouse_jumper.ahk` (see below); it's independent
+of the other two and keeps its own settings file, so trying it never affects them.
+
+## Mouse Jumper Pro
+
+`mouse_jumper_pro.ahk` is the same idea with some extra power-user features layered on
+top. It reads/writes its own `settings_pro.ini` (never `settings.ini`), so it's safe to
+try alongside an existing `mouse_jumper.ahk` setup without disturbing it.
+
+**Extra features:**
+- **System tray menu** — right-click the tray icon to reconfigure, pause/resume, switch
+  now, open the script folder, reload, or exit.
+- **Hotkeys**, work anytime (not just at startup):
+  - `Ctrl+Alt+P` — pause/resume edge-switching (useful when dragging a window across the
+    trigger edge and you don't want an accidental switch).
+  - `Ctrl+Alt+S` — switch immediately, without needing to touch the screen edge.
+  - `Ctrl+Alt+R` — re-run the interactive setup wizard on demand, without restarting the
+    script.
+- **Left/right edges**, not just top/bottom, for side-by-side monitor arrangements — the
+  setup wizard now asks `[T]op [B]ottom [L]eft [R]ight`.
+- **Per-monitor edge detection** — watches a specific monitor's bounds instead of the
+  whole virtual desktop, which matters on multi-monitor setups (the wizard adds a monitor
+  picker step automatically if it detects more than one).
+- **Startup dependency checks** — warns via a tray notification if `hidapitester.exe` is
+  missing, or if the configured `ReceiverVidPid` isn't detected.
+- **Optional logging** — set `EnableLogging=1` in `settings_pro.ini` to log switches and
+  warnings to `mouse_jumper_pro.log`.
 
 ## Requirements
 
@@ -137,18 +168,35 @@ the way:
 .\find_channel_codes.ps1 -Verbose
 ```
 
+By default it only *prints* the bytes to change and where to change them — it never
+edits your files unless you pass `-Apply`, in which case it patches the matching
+`.ahk` file(s) in place (making a one-time `.bak` backup of each first):
+
+```powershell
+.\find_channel_codes.ps1 -Apply
+```
+
 It needs `hidapitester.exe` next to it, same as the main scripts.
 
 ## Setup
 
 1. Clone this repo onto each PC.
-2. Download `hidapitester.exe` from its [releases page](https://github.com/todbot/hidapitester/releases)
-   and place it in the same folder as the script.
-3. Run `mouse_jumper.ahk` (or `mouse_jumper_v2.ahk`) — use the first-run OSD to pick this
-   machine's `Position` (TOP/BOTTOM) and target `Channel`.
+2. Run [`setup.ps1`](setup.ps1) to check for AutoHotkey, download `hidapitester.exe`
+   automatically, and optionally create a Startup shortcut:
+   ```powershell
+   .\setup.ps1 -Script mouse_jumper.ahk
+   ```
+   (or do it by hand: download `hidapitester.exe` from its
+   [releases page](https://github.com/todbot/hidapitester/releases) and place it in the
+   same folder as the script.)
+3. Run `mouse_jumper.ahk` (or `mouse_jumper_v2.ahk` / `mouse_jumper_pro.ahk`) — use the
+   first-run OSD to pick this machine's `Position` (TOP/BOTTOM) and target `Channel`.
 4. Repeat on the other PC with the opposite `Position`.
 
 ### Run at startup
+
+`setup.ps1 -Script <name>.ahk` (see [Setup](#setup) above) does this for you, asking
+first. To do it by hand instead:
 
 1. `Win + R` → `shell:startup` → Enter, to open your personal Startup folder.
 2. Right-click inside it → **New → Shortcut**, and point it at the script for this machine.
@@ -156,3 +204,7 @@ It needs `hidapitester.exe` next to it, same as the main scripts.
 
 For a system-level (pre-login) start instead, use Task Scheduler with an "At startup"
 trigger rather than the Startup folder.
+
+## License
+
+[MIT](LICENSE)
