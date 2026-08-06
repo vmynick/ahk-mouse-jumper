@@ -80,10 +80,11 @@ top. It reads/writes its own `settings_pro.ini` (never `settings.ini`), so it's 
 try alongside an existing `mouse_jumper.ahk` setup without disturbing it.
 
 **Extra features:**
-- **System tray menu** — right-click the tray icon for everything: reconfigure,
-  pause/resume switching, switch now, open the script folder, reload, or exit.
-  No keyboard shortcuts are bound for these on purpose, so there's nothing that
-  could collide with another program's hotkeys.
+- **System tray menu with its own icon** — uses Windows' own "Mouse" control-panel icon
+  (no extra `.ico` file needed) so it's visually distinct from other AutoHotkey scripts at
+  a glance. Right-click it for everything: reconfigure, pause/resume switching, switch
+  now, open the script folder, reload, or exit. No keyboard shortcuts are bound for these
+  on purpose, so there's nothing that could collide with another program's hotkeys.
 - **Left/right edges**, not just top/bottom, for side-by-side monitor arrangements — the
   setup wizard now asks `[T]op [B]ottom [L]eft [R]ight`.
 - **Per-monitor edge detection** — watches a specific monitor's bounds instead of the
