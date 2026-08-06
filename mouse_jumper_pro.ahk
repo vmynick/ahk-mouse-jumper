@@ -311,7 +311,12 @@ CheckDependencies() {
     tempOut := A_Temp . "\mjp_check_" . A_TickCount . ".txt"
     q := Chr(34)   ; built via Chr(34) rather than doubled-quote escaping, so the quote count can't drift
     cmd := q . HidApiTesterPath . q . " --vidpid " . ReceiverVidPid . " --list > " . q . tempOut . q . " 2>&1"
-    RunWait, %ComSpec% /c %cmd%, , Hide
+    ; cmd.exe's /c has a well-known quirk: when the command starts with a
+    ; quoted token (the exe path here), it needs the *whole* command wrapped
+    ; in one more, outer pair of quotes or the redirection silently never
+    ; runs (verified directly: without the extra wrap, the temp file never
+    ; got created at all, which is what made this check always "fail").
+    RunWait, %ComSpec% /c "%cmd%", , Hide
 
     outText := ""
     if FileExist(tempOut) {

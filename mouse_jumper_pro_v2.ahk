@@ -285,7 +285,12 @@ CheckDependencies() {
     q := Chr(34)   ; built via Chr(34) rather than doubled-quote escaping, so the quote count can't drift
     cmd := q . HidApiTesterPath . q . " --vidpid " . ReceiverVidPid . " --list > " . q . tempOut . q . " 2>&1"
     comspec := EnvGet("ComSpec")
-    RunWait(comspec . " /c " . cmd, , "Hide")
+    ; cmd.exe's /c has a well-known quirk: when the command starts with a
+    ; quoted token (the exe path here), it needs the *whole* command wrapped
+    ; in one more, outer pair of quotes or the redirection silently never
+    ; runs (verified directly: without the extra wrap, the temp file never
+    ; got created at all, which is what made this check always "fail").
+    RunWait(comspec . ' /c "' . cmd . '"', , "Hide")
 
     outText := ""
     if FileExist(tempOut) {
@@ -498,14 +503,25 @@ ShowOSD(Text, ProgressVal := -1, CenterOSD := false) {
 
 UpdateOSDProgress(Value) {
     global OSDProgressCtrl
-    if (OSDProgressCtrl)
-        OSDProgressCtrl.Value := Value
+    if (OSDProgressCtrl) {
+        ; A HideOSD() fired via an earlier SetTimer (e.g. the "Active"
+        ; confirmation's -1000ms auto-hide) can destroy whatever OSD is
+        ; *currently* showing -- which may by then be a later dwell-progress
+        ; popup -- without this stale reference finding out. Catch instead
+        ; of crashing the whole script, and drop the dangling reference.
+        try {
+            OSDProgressCtrl.Value := Value
+        } catch {
+            OSDProgressCtrl := ""
+        }
+    }
 }
 
 HideOSD() {
-    global OSDGui
+    global OSDGui, OSDProgressCtrl
     if (OSDGui) {
         OSDGui.Destroy()
         OSDGui := ""
+        OSDProgressCtrl := ""
     }
 }
