@@ -54,10 +54,6 @@ global SetupMode := false
 global SetupStep := 0
 global Paused := false
 
-; Tray menu item position (1-based) of "Pause Switching" -- see SYSTEM TRAY
-; MENU section below for why this is referenced by position, not by name.
-global PauseItemPos := 2
-
 global MonitorCount := 0
 SysGet, MonitorCount, MonitorCount
 
@@ -193,7 +189,6 @@ FinishSetup:
     if (!Paused)
         SetTimer, CheckScreenEdge, 30   ; Fast polling cycle (30ms)
     UpdateTrayTip()
-    UpdateTrayPauseCheck()
 return
 
 ; ==============================================================================
@@ -216,7 +211,6 @@ TogglePause() {
         WriteLog("Resumed via hotkey/tray")
     }
     UpdateTrayTip()
-    UpdateTrayPauseCheck()
 }
 
 ManualSwitch() {
@@ -244,27 +238,25 @@ ReconfigureNow() {
 ; ==============================================================================
 ; SYSTEM TRAY MENU
 ; ==============================================================================
-; Menu items below are referenced by POSITION ("N&", 1-based) wherever they
-; need to be looked up again (Default, Check/Uncheck), not by their name
-; text -- looking them up by name proved unreliable (AHK v1 "Nonexistent
-; menu item" even for a name that was just added moments earlier in the
-; same thread) regardless of what the name text actually was. Position is
-; immune to that: it's just an index into the menu, no string matching.
-; Item order here is therefore load-bearing -- keep PauseItemPos (declared
-; up top with the other globals) in sync with "Pause Switching"'s Add position.
+; Deliberately does NOT use Menu's Check/Uncheck/Default/Rename sub-commands.
+; Both looking an item up by its name text and by position ("N&", which is
+; the documented way to do it) failed here with "Nonexistent menu item",
+; for reasons that didn't reproduce as any known documented limitation --
+; so rather than keep guessing at a fragile workaround, the pause state is
+; only shown via the tray tooltip (hover) and the "Paused"/"Resumed" OSD
+; popup when toggled; the menu items themselves just fire an action and are
+; never looked up again afterward.
 SetupTrayMenu() {
     Menu, Tray, NoStandard
     Menu, Tray, Add, Reconfigure... (Ctrl+Alt+Shift+R), TrayReconfigure
-    Menu, Tray, Add, Pause Switching (Ctrl+Alt+Shift+P), TrayTogglePause   ; must stay item #2 -- see PauseItemPos above
+    Menu, Tray, Add, Pause/Resume Switching (Ctrl+Alt+Shift+P), TrayTogglePause
     Menu, Tray, Add
     Menu, Tray, Add, Switch Now (Ctrl+Alt+Shift+S), TrayManualSwitch
     Menu, Tray, Add
     Menu, Tray, Add, Open Script Folder, TrayOpenFolder
     Menu, Tray, Add, Reload Script, TrayReload
     Menu, Tray, Add, Exit, TrayExit
-    Menu, Tray, Default, 1&
     UpdateTrayTip()
-    UpdateTrayPauseCheck()
 }
 
 TrayReconfigure:
@@ -295,15 +287,6 @@ UpdateTrayTip() {
     global Position, TargetChannel, Paused, MonitorIndex
     state := Paused ? "PAUSED" : "Active"
     Menu, Tray, Tip, % "Mouse Jumper Pro [" . state . "]`n" . Position . " | Ch " . (TargetChannel + 1) . " | Monitor " . MonitorIndex
-}
-
-UpdateTrayPauseCheck() {
-    global Paused, PauseItemPos
-    itemRef := PauseItemPos . "&"
-    if (Paused)
-        Menu, Tray, Check, %itemRef%
-    else
-        Menu, Tray, Uncheck, %itemRef%
 }
 
 ; ==============================================================================
