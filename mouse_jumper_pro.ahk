@@ -239,6 +239,16 @@ ReconfigureNow() {
 ; popup when toggled; the menu items themselves just fire an action and are
 ; never looked up again afterward.
 SetupTrayMenu() {
+    ; Custom tray icon: the classic Windows "Mouse" control-panel icon (a
+    ; picture of a mouse device), pulled from main.cpl instead of shipping a
+    ; separate .ico file. Icon 1 (AHK's IconNumber is 1-based) was verified
+    ; to be the mouse icon on this system; if a future Windows version ships
+    ; a different icon order, this just silently falls back to the default
+    ; AutoHotkey tray icon (FileExist guards against a missing/renamed file).
+    TrayIconFile := A_WinDir . "\System32\main.cpl"
+    if FileExist(TrayIconFile)
+        Menu, Tray, Icon, %TrayIconFile%, 1
+
     Menu, Tray, NoStandard
     Menu, Tray, Add, Reconfigure..., TrayReconfigure
     Menu, Tray, Add, Pause/Resume Switching, TrayTogglePause
