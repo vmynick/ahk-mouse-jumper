@@ -3,7 +3,7 @@
   Fully autonomously discovers the HID++ 2.0 identifiers (device index,
   feature index, function number, channel byte) needed to switch hosts on a
   Logitech multi-host mouse/receiver pair, so you can adapt SwitchChannel()
-  in mouse_jumper.ahk / mouse_jumper_v2.ahk to your own hardware.
+  in mouse_jumper_pro.ahk / mouse_jumper_pro_v2.ahk to your own hardware.
 
 .DESCRIPTION
   This project's default byte codes (device index 1 or 2, feature index

@@ -6,20 +6,21 @@
 **[Project website / onepager](https://vmynick.github.io/ahk-mouse-jumper/)**
 
 A tiny AutoHotkey utility that turns mouse movement into a KVM-style switch: push the
-cursor off the top or bottom edge of the screen and it flips a shared Logitech HID++
-receiver over to another paired device (another PC), so your mouse (and, if the
-receiver/keyboard are paired the same way, your keyboard) "jumps" to the other machine.
+cursor off a screen edge and it flips a shared Logitech HID++ receiver over to another
+paired device (another PC), so your mouse (and, if the receiver/keyboard are paired the
+same way, your keyboard) "jumps" to the other machine.
 
 Two PCs run this script side by side — one configured as the **TOP** screen, the other
 as the **BOTTOM** screen — so moving the cursor past the shared edge switches control
-seamlessly, without any extra hardware KVM box.
+seamlessly, without any extra hardware KVM box. **LEFT**/**RIGHT** work the same way for
+side-by-side monitor arrangements.
 
 ## How it works
 
 1. The script polls the mouse position every 30ms.
-2. Depending on this machine's configured `Position`:
-   - `TOP` → switching triggers when the cursor reaches the **bottom** edge of the screen.
-   - `BOTTOM` → switching triggers when the cursor reaches the **top** edge of the screen.
+2. Depending on this machine's configured `Position` — `TOP`, `BOTTOM`, `LEFT`, or
+   `RIGHT` — switching triggers when the cursor reaches the corresponding edge of the
+   chosen monitor (the opposite edge from where the other PC's screen "continues").
 3. The cursor must **dwell** at the edge for ~567ms (shown as a progress-bar OSD) before
    the switch fires — this avoids accidental switches when just brushing the edge.
 4. On switch, it sends a HID++ "set channel" output report to the receiver via
@@ -37,65 +38,49 @@ Every time the script starts, it shows an OSD for a few seconds so you can (re)c
 
 | Step | Prompt | Keys | Time window |
 |---|---|---|---|
-| 1 | `Mode: <X> \| Target: Ch <N> — Press [SPACE] to change settings` | `Space` | 8s |
-| 2 | `Press [T] for TOP or [B] for BOTTOM` | `T` / `B` | 15s |
+| 1 | `Mode: <X> \| Ch <N> \| Monitor <M> — Press [SPACE] to change settings` | `Space` | 8s |
+| 2 | `Press [T]op [B]ottom [L]eft [R]ight` | `T` / `B` / `L` / `R` | 15s |
+| 2b | `Press [1]-[N] to pick the Monitor` (only shown if more than one monitor is detected) | `1`–`9` | 15s |
 | 3 | `Press [1], [2] or [3] for Channel` | `1` / `2` / `3` | 15s |
 
 - If you don't press `Space` in time, the script just starts with the last saved settings.
-- While a setup prompt is active, the relevant keys (`Space`, `T`, `B`, `1`, `2`, `3`) are
-  **captured** and will not be typed into whatever window has focus.
-- Each choice is written to `settings.ini` immediately, so it survives restarts.
+- While a setup prompt is active, the relevant keys are **captured** and will not be typed
+  into whatever window has focus.
+- Each choice is written to `settings_pro.ini` immediately, so it survives restarts.
+- You can reopen this wizard any time from the tray menu's **Reconfigure...** item,
+  without waiting for a restart.
 
-### Config file (`settings.ini`)
+### Config file (`settings_pro.ini`)
+
+Generated automatically the first time you complete the setup wizard — no template file
+needed:
 
 ```ini
 [Settings]
 Position=TOP
 TargetChannel=1
+MonitorIndex=1
+EnableLogging=0
 ```
 
-- `Position`: `TOP` or `BOTTOM` — which edge of the screen triggers a switch.
-- `TargetChannel`: `0`, `1`, or `2` — zero-based, corresponds to channel 1, 2, 3 shown in the OSD.
+- `Position`: `TOP`, `BOTTOM`, `LEFT`, or `RIGHT` — which edge of the chosen monitor
+  triggers a switch.
+- `TargetChannel`: `0`, `1`, or `2` — zero-based, corresponds to channel 1, 2, 3 shown in
+  the OSD.
+- `MonitorIndex`: 1-based index of the monitor to watch. Only matters on multi-monitor
+  setups; falls back to the primary monitor if unset or out of range.
+- `EnableLogging`: `1` to log switches and warnings to `mouse_jumper_pro.log`, `0`
+  (default) to stay quiet.
 
-A template is provided as [`settings.ini.example`](settings.ini.example); copy it to
-`settings.ini` next to the script if you want to pre-seed values instead of using the
-first-run wizard.
+## Features
 
-## Files
-
-| File | AutoHotkey version | Notes |
-|---|---|---|
-| [`mouse_jumper.ahk`](mouse_jumper.ahk) | v1.1 | Main script |
-| [`mouse_jumper_v2.ahk`](mouse_jumper_v2.ahk) | v2.0 | Same behavior, ported to AHK v2 syntax, for machines running AutoHotkey v2 |
-| [`mouse_jumper_pro.ahk`](mouse_jumper_pro.ahk) | v1.1 | Extended build — tray menu, left/right edges, multi-monitor, logging. See [Mouse Jumper Pro](#mouse-jumper-pro) |
-| [`mouse_jumper_pro_v2.ahk`](mouse_jumper_pro_v2.ahk) | v2.0 | Same extended build, ported to AHK v2 syntax, using `mouse_jumper_v2.ahk`'s HID++ bytes |
-| [`find_channel_codes.ps1`](find_channel_codes.ps1) | — | PowerShell helper to discover the HID++ codes for *your* mouse/receiver |
-| [`setup.ps1`](setup.ps1) | — | Optional one-time setup helper (AutoHotkey check, `hidapitester.exe` download, Startup shortcut) |
-| [`index.html`](index.html) | — | Source of the [project website](https://vmynick.github.io/ahk-mouse-jumper/), served via GitHub Pages |
-
-`mouse_jumper.ahk` and `mouse_jumper_v2.ahk` are functionally equivalent — use whichever
-matches the AutoHotkey runtime installed on a given machine. `mouse_jumper_pro.ahk` /
-`mouse_jumper_pro_v2.ahk` are the same pairing, one AutoHotkey-version step up in
-features (see below); they're independent of the other two and keep their own settings
-file, so trying them never affects the non-pro scripts.
-
-## Mouse Jumper Pro
-
-`mouse_jumper_pro.ahk` (and its AHK v2 counterpart, `mouse_jumper_pro_v2.ahk`) is the
-same idea with some extra power-user features layered on top. Both read/write the same
-shared `settings_pro.ini` (never `settings.ini`), so trying either is safe alongside an
-existing `mouse_jumper.ahk` / `mouse_jumper_v2.ahk` setup without disturbing it. Whenever
-one pro script changes, the other is kept in sync.
-
-**Extra features:**
 - **System tray menu with its own icon** — uses Windows' own "Mouse" control-panel icon
   (no extra `.ico` file needed) so it's visually distinct from other AutoHotkey scripts at
   a glance. Right-click it for everything: reconfigure, pause/resume switching, switch
   now, open the script folder, open the [project website](https://vmynick.github.io/ahk-mouse-jumper/),
   reload, or exit. No keyboard shortcuts are bound for these on purpose, so there's
   nothing that could collide with another program's hotkeys.
-- **Left/right edges**, not just top/bottom, for side-by-side monitor arrangements — the
-  setup wizard now asks `[T]op [B]ottom [L]eft [R]ight`.
+- **Any edge** — top, bottom, left, or right, for whichever way your monitors actually sit.
 - **Per-monitor edge detection** — watches a specific monitor's bounds instead of the
   whole virtual desktop, which matters on multi-monitor setups (the wizard adds a monitor
   picker step automatically if it detects more than one).
@@ -103,6 +88,20 @@ one pro script changes, the other is kept in sync.
   missing, or if the configured `ReceiverVidPid` isn't detected.
 - **Optional logging** — set `EnableLogging=1` in `settings_pro.ini` to log switches and
   warnings to `mouse_jumper_pro.log`.
+
+## Files
+
+| File | AutoHotkey version | Notes |
+|---|---|---|
+| [`mouse_jumper_pro.ahk`](mouse_jumper_pro.ahk) | v1.1 | Main script — tray menu, any edge, multi-monitor, logging |
+| [`mouse_jumper_pro_v2.ahk`](mouse_jumper_pro_v2.ahk) | v2.0 | Same script, ported to AHK v2 syntax |
+| [`find_channel_codes.ps1`](find_channel_codes.ps1) | — | PowerShell helper to discover the HID++ codes for *your* mouse/receiver |
+| [`setup.ps1`](setup.ps1) | — | Optional one-time setup helper (AutoHotkey check, `hidapitester.exe` download, Startup shortcut) |
+| [`index.html`](index.html) | — | Source of the [project website](https://vmynick.github.io/ahk-mouse-jumper/), served via GitHub Pages |
+
+`mouse_jumper_pro.ahk` and `mouse_jumper_pro_v2.ahk` are functionally equivalent — use
+whichever matches the AutoHotkey runtime installed on a given machine. Whenever one
+changes, the other is kept in sync.
 
 ## Requirements
 
@@ -152,8 +151,8 @@ It runs fully autonomously, no manual input required:
    is detected by the device going silent on this receiver right after a command — i.e.
    it actually jumped to another host — so there's nothing to eyeball. The moment that
    happens, it stops, prints the exact bytes to use in `SwitchChannel()`, and — if it
-   finds `mouse_jumper.ahk` / `mouse_jumper_v2.ahk` next to it — points out the exact
-   file and line to change, with the old and new byte sequence shown side by side.
+   finds a `.ahk` script next to it — points out the exact file and line to change, with
+   the old and new byte sequence shown side by side.
 
 Because it really fires host-switch commands, if it succeeds **your mouse will jump off
 this PC during the test** — that's the proof the codes work. Use the mouse's physical
@@ -190,13 +189,14 @@ It needs `hidapitester.exe` next to it, same as the main scripts.
 2. Run [`setup.ps1`](setup.ps1) to check for AutoHotkey, download `hidapitester.exe`
    automatically, and optionally create a Startup shortcut:
    ```powershell
-   .\setup.ps1 -Script mouse_jumper.ahk
+   .\setup.ps1 -Script mouse_jumper_pro.ahk
    ```
    (or do it by hand: download `hidapitester.exe` from its
    [releases page](https://github.com/todbot/hidapitester/releases) and place it in the
    same folder as the script.)
-3. Run `mouse_jumper.ahk` (or `mouse_jumper_v2.ahk` / `mouse_jumper_pro.ahk`) — use the
-   first-run OSD to pick this machine's `Position` (TOP/BOTTOM) and target `Channel`.
+3. Run `mouse_jumper_pro.ahk` (or `mouse_jumper_pro_v2.ahk`, matching your AutoHotkey
+   version) — use the first-run OSD to pick this machine's `Position`, `Monitor`, and
+   target `Channel`.
 4. Repeat on the other PC with the opposite `Position`.
 
 ### Run at startup

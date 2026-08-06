@@ -5,18 +5,16 @@ SetWorkingDir(A_ScriptDir)
 ; ==============================================================================
 ; MOUSE JUMPER PRO (v2)
 ; ==============================================================================
-; AutoHotkey v2 port of mouse_jumper_pro.ahk, using the same HID++ bytes as
-; mouse_jumper_v2.ahk (device index 2, usage 0x0001) since this is the pro
-; build for the machine that runs the v2 script. Keeps its own
-; settings_pro.ini, so trying it never touches settings.ini or the
-; non-pro scripts.
+; AutoHotkey v2 port of mouse_jumper_pro.ahk, sending its HID++ "change
+; host" command via device index 2 / usage 0x0001 (see SwitchChannel()
+; below). Keeps its own settings_pro.ini.
 ;
 ; Same feature set as mouse_jumper_pro.ahk:
 ;   - System tray menu with its own icon (Windows' "Mouse" control-panel
 ;     icon) -- Reconfigure, Pause/Resume, Switch Now, Open Script Folder,
 ;     Open Project Website, Reload, Exit. No keyboard shortcuts; everything
 ;     is a tray click away.
-;   - LEFT/RIGHT edge support, not just TOP/BOTTOM
+;   - TOP/BOTTOM/LEFT/RIGHT edge support
 ;   - Edge detection anchored to a specific monitor's bounds instead of the
 ;     whole virtual desktop, with a setup step to pick which one
 ;   - Startup checks that warn (via tray notification) if hidapitester.exe

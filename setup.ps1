@@ -6,8 +6,8 @@
 
 .DESCRIPTION
   This project needs three things to actually run:
-    1. AutoHotkey installed on this machine -- v1.1 for mouse_jumper.ahk /
-       mouse_jumper_pro.ahk, v2.0 for mouse_jumper_v2.ahk.
+    1. AutoHotkey installed on this machine -- v1.1 for mouse_jumper_pro.ahk,
+       v2.0 for mouse_jumper_pro_v2.ahk.
     2. hidapitester.exe sitting next to the .ahk script (not included in this
        repo, see README).
     3. A shortcut in your Startup folder, if you want it to launch
@@ -29,7 +29,7 @@
 #>
 
 param(
-    [ValidateSet("mouse_jumper.ahk", "mouse_jumper_v2.ahk", "mouse_jumper_pro.ahk")]
+    [ValidateSet("mouse_jumper_pro.ahk", "mouse_jumper_pro_v2.ahk")]
     [string]$Script
 )
 
@@ -62,7 +62,7 @@ if ($foundAhk) {
     Write-Host "Found: $foundAhk" -ForegroundColor Green
 } else {
     Write-Host "AutoHotkey doesn't look installed." -ForegroundColor Yellow
-    Write-Host "Get it from https://www.autohotkey.com/ -- v1.1 for mouse_jumper.ahk / mouse_jumper_pro.ahk, v2.0 for mouse_jumper_v2.ahk -- then re-run this script."
+    Write-Host "Get it from https://www.autohotkey.com/ -- v1.1 for mouse_jumper_pro.ahk, v2.0 for mouse_jumper_pro_v2.ahk -- then re-run this script."
 }
 
 # ------------------------------------------------------------------

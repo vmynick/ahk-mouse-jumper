@@ -10,4 +10,7 @@ hidapitester.exe
 mouse_jumper_old.ahk
 *.bak
 
+# Retired non-pro scripts, kept locally, not published
+archive/
+
 .claude

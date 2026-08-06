@@ -7,17 +7,18 @@ SetBatchLines, -1                       ; Maximum execution speed
 ; ==============================================================================
 ; MOUSE JUMPER PRO
 ; ==============================================================================
-; An extended build of mouse_jumper.ahk. Kept as a separate file (and a
-; separate settings_pro.ini) on purpose, so trying it never touches the
-; production mouse_jumper.ahk / mouse_jumper_v2.ahk or their settings.ini.
+; A tiny AutoHotkey utility that turns mouse movement into a KVM-style
+; switch: push the cursor off a screen edge and it flips a shared Logitech
+; HID++ receiver over to another paired device. Settings live in their own
+; settings_pro.ini.
 ;
-; Adds on top of the base version:
+; Features:
 ;   - System tray menu -- right-click the tray icon for Reconfigure, Pause/
 ;     Resume, Switch Now, Open Script Folder, Open Project Website, Reload,
 ;     Exit. No keyboard shortcuts are bound for these on purpose, so there's
 ;     nothing that could collide with another program's hotkeys; everything
 ;     is a tray click away.
-;   - LEFT/RIGHT edge support, not just TOP/BOTTOM
+;   - TOP/BOTTOM/LEFT/RIGHT edge support
 ;   - Edge detection anchored to a specific monitor's bounds instead of the
 ;     whole virtual desktop, with a setup step to pick which one
 ;   - A startup check that warns (via tray notification) if hidapitester.exe
