@@ -12,11 +12,10 @@ SetBatchLines, -1                       ; Maximum execution speed
 ; production mouse_jumper.ahk / mouse_jumper_v2.ahk or their settings.ini.
 ;
 ; Adds on top of the base version:
-;   - System tray menu (reconfigure / pause / switch now / reload / exit)
-;   - Ctrl+Alt+Shift+P to pause/resume edge-switching
-;   - Ctrl+Alt+Shift+S to switch immediately, without touching the screen edge
-;   - Ctrl+Alt+Shift+R to re-run the interactive setup wizard on demand
-;     (three modifiers on purpose -- rare enough to not collide with other software)
+;   - System tray menu -- right-click the tray icon for Reconfigure, Pause/
+;     Resume, Switch Now, Open Script Folder, Reload, Exit. No keyboard
+;     shortcuts are bound for these on purpose, so there's nothing that could
+;     collide with another program's hotkeys; everything is a tray click away.
 ;   - LEFT/RIGHT edge support, not just TOP/BOTTOM
 ;   - Edge detection anchored to a specific monitor's bounds instead of the
 ;     whole virtual desktop, with a setup step to pick which one
@@ -56,13 +55,6 @@ global Paused := false
 
 global MonitorCount := 0
 SysGet, MonitorCount, MonitorCount
-
-; ==============================================================================
-; POWER-USER HOTKEYS (work anytime, not just during setup)
-; ==============================================================================
-^!+p::TogglePause()
-^!+s::ManualSwitch()
-^!+r::ReconfigureNow()
 
 ; Show the tray menu, run startup checks, then the startup OSD
 SetupTrayMenu()
@@ -192,7 +184,7 @@ FinishSetup:
 return
 
 ; ==============================================================================
-; POWER-USER ACTIONS (tray menu + hotkeys)
+; POWER-USER ACTIONS (triggered from the tray menu)
 ; ==============================================================================
 TogglePause() {
     global Paused, SetupMode
@@ -203,12 +195,12 @@ TogglePause() {
     if (Paused) {
         SetTimer, CheckScreenEdge, Off
         ShowOSD("Mouse Jumper Paused", -1, true)
-        WriteLog("Paused via hotkey/tray")
+        WriteLog("Paused via tray menu")
     } else {
         ShowOSD("Mouse Jumper Resumed", -1, true)
         SetTimer, HideOSD_Timer, -1000
         SetTimer, CheckScreenEdge, 30
-        WriteLog("Resumed via hotkey/tray")
+        WriteLog("Resumed via tray menu")
     }
     UpdateTrayTip()
 }
@@ -248,10 +240,10 @@ ReconfigureNow() {
 ; never looked up again afterward.
 SetupTrayMenu() {
     Menu, Tray, NoStandard
-    Menu, Tray, Add, Reconfigure... (Ctrl+Alt+Shift+R), TrayReconfigure
-    Menu, Tray, Add, Pause/Resume Switching (Ctrl+Alt+Shift+P), TrayTogglePause
+    Menu, Tray, Add, Reconfigure..., TrayReconfigure
+    Menu, Tray, Add, Pause/Resume Switching, TrayTogglePause
     Menu, Tray, Add
-    Menu, Tray, Add, Switch Now (Ctrl+Alt+Shift+S), TrayManualSwitch
+    Menu, Tray, Add, Switch Now, TrayManualSwitch
     Menu, Tray, Add
     Menu, Tray, Add, Open Script Folder, TrayOpenFolder
     Menu, Tray, Add, Reload Script, TrayReload
@@ -417,7 +409,7 @@ CheckScreenEdge:
 return
 
 ; ==============================================================================
-; PERFORM THE ACTUAL SWITCH (shared by the edge trigger and manual hotkey)
+; PERFORM THE ACTUAL SWITCH (shared by the edge trigger and "Switch Now")
 ; ==============================================================================
 PerformSwitch(MLeft := "", MTop := "", MRight := "", MBottom := "") {
     global Position, TargetChannel

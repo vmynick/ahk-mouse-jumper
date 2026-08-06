@@ -64,7 +64,7 @@ first-run wizard.
 |---|---|---|
 | [`mouse_jumper.ahk`](mouse_jumper.ahk) | v1.1 | Main script |
 | [`mouse_jumper_v2.ahk`](mouse_jumper_v2.ahk) | v2.0 | Same behavior, ported to AHK v2 syntax, for machines running AutoHotkey v2 |
-| [`mouse_jumper_pro.ahk`](mouse_jumper_pro.ahk) | v1.1 | Extended build — tray menu, hotkeys, left/right edges, multi-monitor, logging. See [Mouse Jumper Pro](#mouse-jumper-pro) |
+| [`mouse_jumper_pro.ahk`](mouse_jumper_pro.ahk) | v1.1 | Extended build — tray menu, left/right edges, multi-monitor, logging. See [Mouse Jumper Pro](#mouse-jumper-pro) |
 | [`find_channel_codes.ps1`](find_channel_codes.ps1) | — | PowerShell helper to discover the HID++ codes for *your* mouse/receiver |
 | [`setup.ps1`](setup.ps1) | — | Optional one-time setup helper (AutoHotkey check, `hidapitester.exe` download, Startup shortcut) |
 
@@ -80,15 +80,10 @@ top. It reads/writes its own `settings_pro.ini` (never `settings.ini`), so it's 
 try alongside an existing `mouse_jumper.ahk` setup without disturbing it.
 
 **Extra features:**
-- **System tray menu** — right-click the tray icon to reconfigure, pause/resume, switch
-  now, open the script folder, reload, or exit.
-- **Hotkeys**, work anytime (not just at startup) — three modifiers on purpose, so they're
-  unlikely to collide with other software's shortcuts:
-  - `Ctrl+Alt+Shift+P` — pause/resume edge-switching (useful when dragging a window across
-    the trigger edge and you don't want an accidental switch).
-  - `Ctrl+Alt+Shift+S` — switch immediately, without needing to touch the screen edge.
-  - `Ctrl+Alt+Shift+R` — re-run the interactive setup wizard on demand, without restarting
-    the script.
+- **System tray menu** — right-click the tray icon for everything: reconfigure,
+  pause/resume switching, switch now, open the script folder, reload, or exit.
+  No keyboard shortcuts are bound for these on purpose, so there's nothing that
+  could collide with another program's hotkeys.
 - **Left/right edges**, not just top/bottom, for side-by-side monitor arrangements — the
   setup wizard now asks `[T]op [B]ottom [L]eft [R]ight`.
 - **Per-monitor edge detection** — watches a specific monitor's bounds instead of the
