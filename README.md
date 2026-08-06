@@ -65,19 +65,23 @@ first-run wizard.
 | [`mouse_jumper.ahk`](mouse_jumper.ahk) | v1.1 | Main script |
 | [`mouse_jumper_v2.ahk`](mouse_jumper_v2.ahk) | v2.0 | Same behavior, ported to AHK v2 syntax, for machines running AutoHotkey v2 |
 | [`mouse_jumper_pro.ahk`](mouse_jumper_pro.ahk) | v1.1 | Extended build — tray menu, left/right edges, multi-monitor, logging. See [Mouse Jumper Pro](#mouse-jumper-pro) |
+| [`mouse_jumper_pro_v2.ahk`](mouse_jumper_pro_v2.ahk) | v2.0 | Same extended build, ported to AHK v2 syntax, using `mouse_jumper_v2.ahk`'s HID++ bytes |
 | [`find_channel_codes.ps1`](find_channel_codes.ps1) | — | PowerShell helper to discover the HID++ codes for *your* mouse/receiver |
 | [`setup.ps1`](setup.ps1) | — | Optional one-time setup helper (AutoHotkey check, `hidapitester.exe` download, Startup shortcut) |
 
 `mouse_jumper.ahk` and `mouse_jumper_v2.ahk` are functionally equivalent — use whichever
-matches the AutoHotkey runtime installed on a given machine. `mouse_jumper_pro.ahk` is an
-optional, more featureful alternative to `mouse_jumper.ahk` (see below); it's independent
-of the other two and keeps its own settings file, so trying it never affects them.
+matches the AutoHotkey runtime installed on a given machine. `mouse_jumper_pro.ahk` /
+`mouse_jumper_pro_v2.ahk` are the same pairing, one AutoHotkey-version step up in
+features (see below); they're independent of the other two and keep their own settings
+file, so trying them never affects the non-pro scripts.
 
 ## Mouse Jumper Pro
 
-`mouse_jumper_pro.ahk` is the same idea with some extra power-user features layered on
-top. It reads/writes its own `settings_pro.ini` (never `settings.ini`), so it's safe to
-try alongside an existing `mouse_jumper.ahk` setup without disturbing it.
+`mouse_jumper_pro.ahk` (and its AHK v2 counterpart, `mouse_jumper_pro_v2.ahk`) is the
+same idea with some extra power-user features layered on top. Both read/write the same
+shared `settings_pro.ini` (never `settings.ini`), so trying either is safe alongside an
+existing `mouse_jumper.ahk` / `mouse_jumper_v2.ahk` setup without disturbing it. Whenever
+one pro script changes, the other is kept in sync.
 
 **Extra features:**
 - **System tray menu with its own icon** — uses Windows' own "Mouse" control-panel icon
